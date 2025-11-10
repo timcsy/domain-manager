@@ -29,7 +29,7 @@ func Recoverer(next http.Handler) http.Handler {
 					Message: "An unexpected error occurred",
 					Code:    http.StatusInternalServerError,
 				}
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			}
 		}()
 
@@ -47,5 +47,5 @@ func ErrorHandler(w http.ResponseWriter, statusCode int, message string) {
 		Message: message,
 		Code:    statusCode,
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

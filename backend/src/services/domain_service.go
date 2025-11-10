@@ -171,13 +171,13 @@ func (s *DomainService) createIngressForDomain(domain *models.Domain) {
 	if err != nil {
 		log.Printf("❌ Failed to create Ingress for domain %s: %v", domain.DomainName, err)
 		domain.Status = "error"
-		s.domainRepo.Update(domain)
+		_ = s.domainRepo.Update(domain)
 		return
 	}
 
 	// 更新域名狀態
 	domain.Status = "active"
-	s.domainRepo.Update(domain)
+	_ = s.domainRepo.Update(domain)
 	log.Printf("✅ Successfully created Ingress for domain %s", domain.DomainName)
 }
 

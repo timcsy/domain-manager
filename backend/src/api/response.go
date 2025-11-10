@@ -44,7 +44,7 @@ func Success(w http.ResponseWriter, data interface{}, message string) {
 		Data:    data,
 		Message: message,
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // Error sends an error JSON response
@@ -57,7 +57,7 @@ func Error(w http.ResponseWriter, statusCode int, message string) {
 		Error:   http.StatusText(statusCode),
 		Message: message,
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // Paginated sends a paginated JSON response
@@ -77,5 +77,5 @@ func Paginated(w http.ResponseWriter, data interface{}, page, perPage, total int
 			TotalPages: totalPages,
 		},
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }

@@ -94,7 +94,7 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 func HandleLogout(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 	if token != "" {
-		authService.Logout(token)
+		_ = authService.Logout(token)
 	}
 	Success(w, nil, "Logout successful")
 }
