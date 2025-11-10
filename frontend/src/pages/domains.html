@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>域名管理 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        // Configure htmx BEFORE it loads
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div x-data="{
+        showModal: false,
+        formData: {
+            domain_name: '',
+            target_service: '',
+            target_namespace: 'default',
+            target_port: 80,
+            ssl_enabled: true
+        },
+        domains: [],
+        loading: true,
+        filter: {
+            status: '',
+            search: ''
+        },
+        pagination: {
+            page: 1,
+            perPage: 20,
+            total: 0
+        },
+        async loadDomains() {
+            this.loading = true;
+            try {
+                const token = localStorage.getItem('token');
+                const params = new URLSearchParams({
+                    page: this.pagination.page,
+                    per_page: this.pagination.perPage
+                });
+                if (this.filter.status) params.append('status', this.filter.status);
+
+                const response = await fetch(`/api/v1/domains?${params}`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.domains = data.data || [];
+                    this.pagination.total = data.pagination?.total || 0;
+                }
+            } catch (err) {
+                console.error('Failed to load domains:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+        async createDomain() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/domains', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify(this.formData)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.showModal = false;
+                    this.formData = { domain_name: '', target_service: '', target_namespace: 'default', target_port: 80, ssl_enabled: true };
+                    await this.loadDomains();
+                    alert('域名建立成功！');
+                } else {
+                    alert('域名建立失敗: ' + data.message);
+                }
+            } catch (err) {
+                console.error('Failed to create domain:', err);
+                alert('域名建立失敗');
+            }
+        },
+        async deleteDomain(id) {
+            if (!confirm('確定要刪除此域名嗎？')) return;
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Session-Token': token }
+                });
+                if (response.ok) {
+                    await this.loadDomains();
+                    alert('域名已刪除');
+                }
+            } catch (err) {
+                console.error('Failed to delete domain:', err);
+                alert('刪除域名失敗');
+            }
+        },
+        get filteredDomains() {
+            if (!this.filter.search) return this.domains;
+            const search = this.filter.search.toLowerCase();
+            return this.domains.filter(d =>
+                d.domain_name.toLowerCase().includes(search) ||
+                d.target_service.toLowerCase().includes(search)
+            );
+        },
+        get totalPages() {
+            return Math.ceil(this.pagination.total / this.pagination.perPage);
+        },
+        nextPage() {
+            if (this.pagination.page < this.totalPages) {
+                this.pagination.page++;
+                this.loadDomains();
+            }
+        },
+        prevPage() {
+            if (this.pagination.page > 1) {
+                this.pagination.page--;
+                this.loadDomains();
+            }
+        }
+    }" x-init="loadDomains()" class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <main class="flex-1 overflow-y-auto">
+        <div class="container mx-auto p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h1 class="text-2xl font-bold">域名管理</h1>
+                <button @click="showModal = true" class="btn-primary">
+                    + 新增域名
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="card mb-4">
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <input type="text"
+                               x-model="filter.search"
+                               placeholder="搜尋域名或服務..."
+                               class="input">
+                    </div>
+                    <div class="w-48">
+                        <select x-model="filter.status" @change="loadDomains()" class="input">
+                            <option value="">所有狀態</option>
+                            <option value="active">Active</option>
+                            <option value="pending">Pending</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Domain List -->
+            <div class="card">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">域名</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">目標服務</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SSL</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">憑證</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <template x-if="loading">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">載入中...</td>
+                                </tr>
+                            </template>
+                            <template x-if="!loading && filteredDomains.length === 0">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">尚無域名資料</td>
+                                </tr>
+                            </template>
+                            <template x-for="domain in filteredDomains" :key="domain.id">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <a :href="`/domain-detail?id=${domain.id}`" class="text-blue-600 hover:text-blue-800" x-text="domain.domain_name"></a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="`${domain.target_service}.${domain.target_namespace}:${domain.target_port}`"></td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                              :class="{
+                                                  'bg-green-100 text-green-800': domain.status === 'active',
+                                                  'bg-yellow-100 text-yellow-800': domain.status === 'pending',
+                                                  'bg-red-100 text-red-800': domain.status === 'error'
+                                              }" x-text="domain.status"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="domain.ssl_mode"></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <span x-show="domain.certificate_id" class="text-green-600">✓ 已配置</span>
+                                        <span x-show="!domain.certificate_id" class="text-gray-400">未配置</span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                        <a :href="`/domain-detail?id=${domain.id}`" class="text-blue-600 hover:text-blue-800 mr-3">檢視</a>
+                                        <button @click="deleteDomain(domain.id)" class="text-red-600 hover:text-red-900">刪除</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between" x-show="pagination.total > 0">
+                    <div class="text-sm text-gray-700">
+                        顯示第 <span x-text="((pagination.page - 1) * pagination.perPage) + 1"></span> 到
+                        <span x-text="Math.min(pagination.page * pagination.perPage, pagination.total)"></span> 筆，
+                        共 <span x-text="pagination.total"></span> 筆
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="prevPage()"
+                                :disabled="pagination.page === 1"
+                                :class="pagination.page === 1 ? 'opacity-50 cursor-not-allowed' : ''"
+                                class="px-3 py-1 border rounded hover:bg-gray-100">
+                            上一頁
+                        </button>
+                        <span class="px-3 py-1">
+                            第 <span x-text="pagination.page"></span> / <span x-text="totalPages"></span> 頁
+                        </span>
+                        <button @click="nextPage()"
+                                :disabled="pagination.page >= totalPages"
+                                :class="pagination.page >= totalPages ? 'opacity-50 cursor-not-allowed' : ''"
+                                class="px-3 py-1 border rounded hover:bg-gray-100">
+                            下一頁
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Domain Modal -->
+        <div x-show="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+            <div @click.away="showModal = false" class="bg-white rounded-lg p-6 w-full max-w-md">
+                <h3 class="text-lg font-semibold mb-4">新增域名</h3>
+                <form @submit.prevent="createDomain()">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">域名</label>
+                            <input type="text" x-model="formData.domain_name" required class="input" placeholder="example.com">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">目標服務</label>
+                            <input type="text" x-model="formData.target_service" required class="input" placeholder="my-service">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">命名空間</label>
+                            <input type="text" x-model="formData.target_namespace" class="input">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">埠號</label>
+                            <input type="number" x-model="formData.target_port" required class="input">
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" x-model="formData.ssl_enabled" id="ssl_enabled" class="mr-2">
+                            <label for="ssl_enabled" class="text-sm font-medium">啟用 SSL</label>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex space-x-3">
+                        <button type="submit" class="btn-primary flex-1">建立</button>
+                        <button type="button" @click="showModal = false" class="btn-secondary flex-1">取消</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        </div>
+        </main>
+    </div>
+</body>
+</html>

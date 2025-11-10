@@ -1,0 +1,16 @@
+{
+  "name": "domain-manager-frontend",
+  "version": "1.0.0",
+  "description": "Kubernetes Domain Manager Frontend",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/styles/main.css -o ./dist/styles/main.css --minify",
+    "watch:css": "tailwindcss -i ./src/styles/main.css -o ./dist/styles/main.css --watch"
+  },
+  "dependencies": {
+    "htmx.org": "^1.9.12",
+    "alpinejs": "^3.13.7"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
+  }
+}

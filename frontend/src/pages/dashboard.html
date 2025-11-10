@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>儀表板 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        // Configure htmx BEFORE it loads
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <header class="bg-white shadow-sm border-b border-gray-200 p-6">
+                <h2 class="text-2xl font-bold text-gray-900">歡迎使用域名管理器</h2>
+                <p class="text-gray-600 mt-1">快速管理您的 Kubernetes Ingress 和 SSL 憑證</p>
+            </header>
+
+            <div class="p-6">
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6" x-data="{
+                    totalDomains: 0,
+                    activeDomains: 0,
+                    totalCertificates: 0,
+                    async loadStats() {
+                        try {
+                            const token = localStorage.getItem('token');
+
+                            // Load domains
+                            const domainsResponse = await fetch('/api/v1/domains', {
+                                headers: { 'X-Session-Token': token }
+                            });
+                            const domainsData = await domainsResponse.json();
+                            if (domainsData.success && domainsData.pagination) {
+                                this.totalDomains = domainsData.pagination.total || 0;
+                                this.activeDomains = domainsData.data.filter(d => d.enabled && d.status === 'active').length;
+                            }
+
+                            // Load certificates
+                            const certsResponse = await fetch('/api/v1/certificates', {
+                                headers: { 'X-Session-Token': token }
+                            });
+                            const certsData = await certsResponse.json();
+                            if (certsData.success && certsData.data) {
+                                this.totalCertificates = certsData.data.total || 0;
+                            }
+                        } catch (err) {
+                            console.error('Failed to load stats:', err);
+                        }
+                    }
+                }" x-init="loadStats()">
+                    <div class="card">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">總域名數</p>
+                                <p class="text-3xl font-bold text-gray-900" x-text="totalDomains">0</p>
+                            </div>
+                            <div class="p-3 bg-primary-100 rounded-full">
+                                <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 919-9"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">運行中</p>
+                                <p class="text-3xl font-bold text-green-600" x-text="activeDomains">0</p>
+                            </div>
+                            <div class="p-3 bg-green-100 rounded-full">
+                                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600">SSL 憑證</p>
+                                <p class="text-3xl font-bold text-blue-600" x-text="totalCertificates">0</p>
+                            </div>
+                            <div class="p-3 bg-blue-100 rounded-full">
+                                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Start Guide -->
+                <div class="card">
+                    <h3 class="text-lg font-semibold mb-4">快速開始</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0 w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                <span class="text-primary-600 font-semibold">1</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium">新增域名</h4>
+                                <p class="text-sm text-gray-600">前往域名管理頁面,新增您的第一個域名配置</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0 w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                <span class="text-primary-600 font-semibold">2</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium">配置 DNS</h4>
+                                <p class="text-sm text-gray-600">將您的域名 DNS 指向 Kubernetes Ingress LoadBalancer IP</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0 w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                                <span class="text-primary-600 font-semibold">3</span>
+                            </div>
+                            <div>
+                                <h4 class="font-medium">自動取得 SSL</h4>
+                                <p class="text-sm text-gray-600">系統將自動透過 Let's Encrypt 申請 SSL 憑證</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <a href="/domains" class="btn-primary">
+                            開始管理域名
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

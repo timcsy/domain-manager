@@ -1,0 +1,1279 @@
+openapi: 3.0.3
+info:
+  title: Kubernetes Domain Manager API
+  description: |
+    RESTful API for managing domain configurations, SSL certificates, and service mappings in Kubernetes.
+
+    ## Authentication
+    All API endpoints require authentication using API Key in the `X-API-Key` header.
+
+    ## Rate Limiting
+    - 100 requests per minute per API key
+    - 429 status code returned when limit exceeded
+
+    ## Versioning
+    API version is included in the path (e.g., `/api/v1/`)
+  version: 1.0.0
+  contact:
+    name: Domain Manager Support
+    url: https://github.com/yourusername/domain-manager
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development server
+  - url: https://domain-manager.example.com/api/v1
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Domains
+    description: Domain configuration management
+  - name: Certificates
+    description: SSL/TLS certificate management
+  - name: Services
+    description: Kubernetes service discovery
+  - name: Diagnostics
+    description: System diagnostics and health checks
+  - name: Backup
+    description: Database backup operations
+  - name: Settings
+    description: System settings management
+
+paths:
+  # ==================== Domains ====================
+  /domains:
+    get:
+      tags:
+        - Domains
+      summary: List all domains
+      description: Retrieve a paginated list of domain configurations
+      operationId: listDomains
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - name: status
+          in: query
+          description: Filter by domain status
+          schema:
+            type: string
+            enum: [pending, active, error, deleted]
+        - name: enabled
+          in: query
+          description: Filter by enabled status
+          schema:
+            type: boolean
+        - name: service
+          in: query
+          description: Filter by target service name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Domain'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Domains
+      summary: Create a new domain
+      description: Add a new domain configuration
+      operationId: createDomain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainCreate'
+      responses:
+        '201':
+          description: Domain created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '409':
+          description: Domain already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains/{id}:
+    get:
+      tags:
+        - Domains
+      summary: Get domain by ID
+      description: Retrieve detailed information about a specific domain
+      operationId: getDomainById
+      parameters:
+        - $ref: '#/components/parameters/DomainIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags:
+        - Domains
+      summary: Update domain configuration
+      description: Update an existing domain configuration
+      operationId: updateDomain
+      parameters:
+        - $ref: '#/components/parameters/DomainIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainUpdate'
+      responses:
+        '200':
+          description: Domain updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Domains
+      summary: Delete domain
+      description: Delete a domain configuration (soft delete by default)
+      operationId: deleteDomain
+      parameters:
+        - $ref: '#/components/parameters/DomainIdParam'
+        - name: hard
+          in: query
+          description: If true, permanently delete the domain
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '204':
+          description: Domain deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains/{id}/status:
+    get:
+      tags:
+        - Domains
+      summary: Get domain status
+      description: Get real-time status including DNS, certificate, and ingress information
+      operationId: getDomainStatus
+      parameters:
+        - $ref: '#/components/parameters/DomainIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainStatus'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains/{id}/diagnostics:
+    get:
+      tags:
+        - Domains
+      summary: Get domain diagnostics
+      description: Retrieve diagnostic logs for a specific domain
+      operationId: getDomainDiagnostics
+      parameters:
+        - $ref: '#/components/parameters/DomainIdParam'
+        - name: log_type
+          in: query
+          description: Filter by log type
+          schema:
+            type: string
+            enum: [info, warning, error]
+        - name: resolved
+          in: query
+          description: Filter by resolved status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DiagnosticLog'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Certificates ====================
+  /certificates:
+    get:
+      tags:
+        - Certificates
+      summary: List all certificates
+      description: Retrieve a paginated list of SSL certificates
+      operationId: listCertificates
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - name: status
+          in: query
+          description: Filter by certificate status
+          schema:
+            type: string
+            enum: [valid, expiring, expired, revoked]
+        - name: source
+          in: query
+          description: Filter by certificate source
+          schema:
+            type: string
+            enum: [letsencrypt, manual]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags:
+        - Certificates
+      summary: Upload custom certificate
+      description: Upload a custom SSL certificate and private key
+      operationId: uploadCertificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateUpload'
+      responses:
+        '201':
+          description: Certificate uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /certificates/{id}:
+    get:
+      tags:
+        - Certificates
+      summary: Get certificate by ID
+      description: Retrieve detailed information about a specific certificate
+      operationId: getCertificateById
+      parameters:
+        - $ref: '#/components/parameters/CertificateIdParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags:
+        - Certificates
+      summary: Delete certificate
+      description: Delete a certificate (only if not in use)
+      operationId: deleteCertificate
+      parameters:
+        - $ref: '#/components/parameters/CertificateIdParam'
+      responses:
+        '204':
+          description: Certificate deleted successfully
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Certificate is in use by domains
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /certificates/{id}/renew:
+    post:
+      tags:
+        - Certificates
+      summary: Manually renew certificate
+      description: Trigger manual renewal for a Let's Encrypt certificate
+      operationId: renewCertificate
+      parameters:
+        - $ref: '#/components/parameters/CertificateIdParam'
+      responses:
+        '200':
+          description: Certificate renewal initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Certificate renewal initiated
+                  job_id:
+                    type: string
+                    example: renewal-job-123
+        '400':
+          description: Certificate cannot be renewed (e.g., manual certificate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /certificates/expiring:
+    get:
+      tags:
+        - Certificates
+      summary: List expiring certificates
+      description: Get certificates expiring within specified days
+      operationId: listExpiringCertificates
+      parameters:
+        - name: days
+          in: query
+          description: Number of days to look ahead
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 90
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Services ====================
+  /services:
+    get:
+      tags:
+        - Services
+      summary: Discover Kubernetes services
+      description: List all available Kubernetes services that can be used as targets
+      operationId: listServices
+      parameters:
+        - name: namespace
+          in: query
+          description: Filter by namespace
+          schema:
+            type: string
+        - name: label_selector
+          in: query
+          description: Filter by label selector (e.g., app=nginx)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KubernetesService'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /services/{namespace}/{name}:
+    get:
+      tags:
+        - Services
+      summary: Get service details
+      description: Retrieve detailed information about a Kubernetes service
+      operationId: getServiceDetails
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KubernetesService'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Diagnostics ====================
+  /diagnostics/logs:
+    get:
+      tags:
+        - Diagnostics
+      summary: Get all diagnostic logs
+      description: Retrieve system-wide diagnostic logs
+      operationId: getDiagnosticLogs
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - name: log_type
+          in: query
+          description: Filter by log type
+          schema:
+            type: string
+            enum: [info, warning, error]
+        - name: category
+          in: query
+          description: Filter by category
+          schema:
+            type: string
+            enum: [dns, certificate, ingress, service, system]
+        - name: resolved
+          in: query
+          description: Filter by resolved status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DiagnosticLog'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /diagnostics/health:
+    get:
+      tags:
+        - Diagnostics
+      summary: System health check
+      description: Check overall system health and component status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+
+  /diagnostics/dns/{domain}:
+    get:
+      tags:
+        - Diagnostics
+      summary: Check DNS configuration
+      description: Verify DNS records for a domain
+      operationId: checkDNS
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DNS check results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DNSCheckResult'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Backup ====================
+  /backup:
+    post:
+      tags:
+        - Backup
+      summary: Create database backup
+      description: Create a backup of the SQLite database
+      operationId: createBackup
+      responses:
+        '200':
+          description: Backup created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Backup created successfully
+                  filename:
+                    type: string
+                    example: domain-manager-20251107-143022.db.gz
+                  size:
+                    type: integer
+                    description: Backup file size in bytes
+                    example: 1048576
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags:
+        - Backup
+      summary: Download database backup
+      description: Download the latest database backup
+      operationId: downloadBackup
+      parameters:
+        - name: filename
+          in: query
+          description: Specific backup filename to download
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup file
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== Settings ====================
+  /settings:
+    get:
+      tags:
+        - Settings
+      summary: Get system settings
+      description: Retrieve all system settings
+      operationId: getSettings
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: string
+                example:
+                  letsencrypt_email: admin@example.com
+                  default_ingress_class: nginx
+                  cert_renewal_days: "30"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      tags:
+        - Settings
+      summary: Update system settings
+      description: Update one or more system settings
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+              example:
+                letsencrypt_email: newemail@example.com
+                cert_renewal_days: "45"
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Settings updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ==================== Components ====================
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  parameters:
+    DomainIdParam:
+      name: id
+      in: path
+      required: true
+      description: Domain ID
+      schema:
+        type: integer
+        format: int64
+
+    CertificateIdParam:
+      name: id
+      in: path
+      required: true
+      description: Certificate ID
+      schema:
+        type: integer
+        format: int64
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+    OffsetParam:
+      name: offset
+      in: query
+      description: Number of items to skip
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+
+  schemas:
+    Domain:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        domain_name:
+          type: string
+          example: example.com
+        target_service:
+          type: string
+          example: nginx-service
+        target_namespace:
+          type: string
+          example: default
+        target_port:
+          type: integer
+          example: 80
+        ssl_mode:
+          type: string
+          enum: [auto, manual]
+          example: auto
+        certificate_id:
+          type: integer
+          format: int64
+          nullable: true
+          example: 1
+        status:
+          type: string
+          enum: [pending, active, error, deleted]
+          example: active
+        enabled:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+      required:
+        - id
+        - domain_name
+        - target_service
+        - target_namespace
+        - target_port
+        - ssl_mode
+        - status
+        - enabled
+
+    DomainCreate:
+      type: object
+      properties:
+        domain_name:
+          type: string
+          example: api.example.com
+        target_service:
+          type: string
+          example: api-service
+        target_namespace:
+          type: string
+          example: default
+          default: default
+        target_port:
+          type: integer
+          example: 8080
+        ssl_mode:
+          type: string
+          enum: [auto, manual]
+          default: auto
+          example: auto
+        certificate_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Required if ssl_mode is 'manual'
+      required:
+        - domain_name
+        - target_service
+        - target_port
+
+    DomainUpdate:
+      type: object
+      properties:
+        target_service:
+          type: string
+          example: new-service
+        target_namespace:
+          type: string
+          example: production
+        target_port:
+          type: integer
+          example: 8080
+        ssl_mode:
+          type: string
+          enum: [auto, manual]
+        certificate_id:
+          type: integer
+          format: int64
+          nullable: true
+        enabled:
+          type: boolean
+
+    DomainStatus:
+      type: object
+      properties:
+        domain_id:
+          type: integer
+          format: int64
+          example: 1
+        domain_name:
+          type: string
+          example: example.com
+        status:
+          type: string
+          enum: [pending, active, error, deleted]
+          example: active
+        dns_configured:
+          type: boolean
+          example: true
+        dns_ip:
+          type: string
+          nullable: true
+          example: "203.0.113.1"
+        ingress_created:
+          type: boolean
+          example: true
+        service_exists:
+          type: boolean
+          example: true
+        certificate_valid:
+          type: boolean
+          example: true
+        certificate_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-03-01T10:00:00Z"
+        last_checked:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        domain_name:
+          type: string
+          example: example.com
+        source:
+          type: string
+          enum: [letsencrypt, manual]
+          example: letsencrypt
+        issuer:
+          type: string
+          nullable: true
+          example: Let's Encrypt Authority X3
+        valid_from:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+        valid_until:
+          type: string
+          format: date-time
+          example: "2026-02-05T10:00:00Z"
+        status:
+          type: string
+          enum: [valid, expiring, expired, revoked]
+          example: valid
+        k8s_secret_name:
+          type: string
+          example: example-com-tls
+        k8s_secret_namespace:
+          type: string
+          example: default
+        auto_renew:
+          type: boolean
+          example: true
+        last_renewal_attempt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-11-07T10:00:00Z"
+        renewal_error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+      required:
+        - id
+        - domain_name
+        - source
+        - valid_from
+        - valid_until
+        - status
+
+    CertificateUpload:
+      type: object
+      properties:
+        domain_name:
+          type: string
+          example: example.com
+        certificate_pem:
+          type: string
+          description: Certificate in PEM format
+          example: "-----BEGIN CERTIFICATE-----\nMIIE...\n-----END CERTIFICATE-----"
+        private_key_pem:
+          type: string
+          description: Private key in PEM format
+          example: "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"
+        auto_renew:
+          type: boolean
+          default: false
+          description: Manual certificates cannot auto-renew
+      required:
+        - domain_name
+        - certificate_pem
+        - private_key_pem
+
+    KubernetesService:
+      type: object
+      properties:
+        name:
+          type: string
+          example: nginx-service
+        namespace:
+          type: string
+          example: default
+        type:
+          type: string
+          enum: [ClusterIP, NodePort, LoadBalancer]
+          example: ClusterIP
+        cluster_ip:
+          type: string
+          example: 10.96.0.10
+        ports:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: http
+              port:
+                type: integer
+                example: 80
+              target_port:
+                type: integer
+                example: 8080
+              protocol:
+                type: string
+                example: TCP
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            app: nginx
+            version: v1
+        selector:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            app: nginx
+      required:
+        - name
+        - namespace
+        - type
+        - ports
+
+    DiagnosticLog:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        domain_id:
+          type: integer
+          format: int64
+          nullable: true
+          example: 1
+        log_type:
+          type: string
+          enum: [info, warning, error]
+          example: warning
+        category:
+          type: string
+          enum: [dns, certificate, ingress, service, system]
+          example: certificate
+        message:
+          type: string
+          example: Certificate will expire in 15 days
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+          example:
+            certificate_id: 1
+            expires_at: "2025-11-22T10:00:00Z"
+        resolved:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+      required:
+        - id
+        - log_type
+        - category
+        - message
+        - resolved
+
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-11-07T10:00:00Z"
+        components:
+          type: object
+          properties:
+            database:
+              $ref: '#/components/schemas/ComponentHealth'
+            kubernetes:
+              $ref: '#/components/schemas/ComponentHealth'
+            cert_manager:
+              $ref: '#/components/schemas/ComponentHealth'
+      required:
+        - status
+        - timestamp
+        - components
+
+    ComponentHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: healthy
+        message:
+          type: string
+          nullable: true
+          example: Connection successful
+        latency_ms:
+          type: integer
+          nullable: true
+          example: 5
+      required:
+        - status
+
+    DNSCheckResult:
+      type: object
+      properties:
+        domain:
+          type: string
+          example: example.com
+        configured:
+          type: boolean
+          example: true
+        records:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                example: A
+              value:
+                type: string
+                example: 203.0.113.1
+              ttl:
+                type: integer
+                example: 300
+        expected_ip:
+          type: string
+          nullable: true
+          example: 203.0.113.1
+        actual_ips:
+          type: array
+          items:
+            type: string
+          example: ["203.0.113.1"]
+        matches:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: DNS is correctly configured
+      required:
+        - domain
+        - configured
+        - matches
+        - message
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 100
+        limit:
+          type: integer
+          example: 20
+        offset:
+          type: integer
+          example: 0
+        has_more:
+          type: boolean
+          example: true
+      required:
+        - total
+        - limit
+        - offset
+        - has_more
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Invalid request
+        message:
+          type: string
+          example: Domain name is required
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        details:
+          type: object
+          nullable: true
+          additionalProperties: true
+      required:
+        - error
+        - message
+
+  responses:
+    BadRequestError:
+      description: Bad request - Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Bad Request
+            message: Invalid domain name format
+            code: VALIDATION_ERROR
+
+    UnauthorizedError:
+      description: Unauthorized - Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Unauthorized
+            message: Invalid or missing API key
+            code: AUTH_ERROR
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Not Found
+            message: Domain with ID 123 not found
+            code: NOT_FOUND
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: Internal Server Error
+            message: An unexpected error occurred
+            code: INTERNAL_ERROR

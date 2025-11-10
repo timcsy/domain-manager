@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>憑證管理 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        // Configure htmx BEFORE it loads
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div x-data="{
+        showModal: false,
+        certificates: [],
+        loading: true,
+        formData: {
+            domain_name: '',
+            certificate_pem: '',
+            private_key_pem: ''
+        },
+        async loadCertificates() {
+            this.loading = true;
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/certificates', {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.certificates = data.data.certificates || [];
+                }
+            } catch (err) {
+                console.error('Failed to load certificates:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+        async uploadCertificate() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/certificates', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify(this.formData)
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.showModal = false;
+                    this.formData = { domain_name: '', certificate_pem: '', private_key_pem: '' };
+                    await this.loadCertificates();
+                    alert('憑證上傳成功！');
+                } else {
+                    alert('憑證上傳失敗: ' + data.message);
+                }
+            } catch (err) {
+                console.error('Failed to upload certificate:', err);
+                alert('憑證上傳失敗，請檢查憑證格式是否正確');
+            }
+        },
+        async deleteCertificate(id) {
+            if (!confirm('確定要刪除此憑證嗎？')) return;
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/certificates/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Session-Token': token }
+                });
+                if (response.ok) {
+                    await this.loadCertificates();
+                    alert('憑證已刪除');
+                }
+            } catch (err) {
+                console.error('Failed to delete certificate:', err);
+                alert('刪除憑證失敗');
+            }
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('zh-TW');
+        },
+        getDaysUntilExpiry(validUntil) {
+            if (!validUntil) return null;
+            const now = new Date();
+            const expiry = new Date(validUntil);
+            const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+            return days;
+        },
+        getExpiryClass(days) {
+            if (days === null) return '';
+            if (days < 0) return 'bg-red-100 text-red-800';
+            if (days < 30) return 'bg-yellow-100 text-yellow-800';
+            return 'bg-green-100 text-green-800';
+        },
+        getExpiryText(days) {
+            if (days === null) return 'N/A';
+            if (days < 0) return '已過期';
+            if (days === 0) return '今天到期';
+            return `${days} 天`;
+        }
+    }" x-init="loadCertificates()" class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <main class="flex-1 overflow-y-auto">
+            <div class="container mx-auto p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-2xl font-bold">憑證管理</h1>
+                    <button @click="showModal = true" class="btn-primary">
+                        + 上傳憑證
+                    </button>
+                </div>
+
+                <!-- Certificate List -->
+                <div class="card">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">域名</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">來源</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">發行者</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">有效期至</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">剩餘天數</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <template x-if="loading">
+                                    <tr>
+                                        <td colspan="7" class="px-6 py-4 text-center text-gray-500">載入中...</td>
+                                    </tr>
+                                </template>
+                                <template x-if="!loading && certificates.length === 0">
+                                    <tr>
+                                        <td colspan="7" class="px-6 py-4 text-center text-gray-500">
+                                            尚無憑證資料，請上傳憑證
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-for="cert in certificates" :key="cert.id">
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="cert.domain_name"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                  :class="cert.source === 'letsencrypt' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'"
+                                                  x-text="cert.source === 'letsencrypt' ? 'Let\'s Encrypt' : '手動上傳'"></span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="cert.issuer || 'N/A'"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(cert.valid_until)"></td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                  :class="getExpiryClass(getDaysUntilExpiry(cert.valid_until))"
+                                                  x-text="getExpiryText(getDaysUntilExpiry(cert.valid_until))"></span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                  :class="{
+                                                      'bg-green-100 text-green-800': cert.status === 'valid',
+                                                      'bg-yellow-100 text-yellow-800': cert.status === 'expiring',
+                                                      'bg-red-100 text-red-800': cert.status === 'expired' || cert.status === 'revoked'
+                                                  }" x-text="cert.status"></span>
+                                        </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                            <button @click="deleteCertificate(cert.id)" class="text-red-600 hover:text-red-900">刪除</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Info Card -->
+                <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 class="text-sm font-semibold text-blue-800 mb-2">關於 SSL 憑證</h3>
+                    <ul class="text-sm text-blue-700 space-y-1">
+                        <li>• 憑證必須為 PEM 格式</li>
+                        <li>• 憑證和私鑰必須匹配</li>
+                        <li>• 系統會自動檢查憑證有效期限</li>
+                        <li>• 憑證將自動部署到 Kubernetes Secret</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Upload Certificate Modal -->
+            <div x-show="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+                <div @click.away="showModal = false" class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <h3 class="text-lg font-semibold mb-4">上傳 SSL 憑證</h3>
+                    <form @submit.prevent="uploadCertificate()">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">域名</label>
+                                <input type="text" x-model="formData.domain_name" required class="input"
+                                       placeholder="example.com">
+                                <p class="text-xs text-gray-500 mt-1">輸入此憑證對應的域名</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium mb-1">憑證 (PEM 格式)</label>
+                                <textarea x-model="formData.certificate_pem" required class="input font-mono text-xs"
+                                          rows="10"
+                                          placeholder="-----BEGIN CERTIFICATE-----&#10;MIIDXTCCAkWgAwIBAgIJ...&#10;-----END CERTIFICATE-----"></textarea>
+                                <p class="text-xs text-gray-500 mt-1">包含 BEGIN 和 END 標記的完整憑證</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium mb-1">私鑰 (PEM 格式)</label>
+                                <textarea x-model="formData.private_key_pem" required class="input font-mono text-xs"
+                                          rows="10"
+                                          placeholder="-----BEGIN PRIVATE KEY-----&#10;MIIEvQIBADANBgkqhkiG...&#10;-----END PRIVATE KEY-----"></textarea>
+                                <p class="text-xs text-gray-500 mt-1">包含 BEGIN 和 END 標記的完整私鑰</p>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 flex space-x-3">
+                            <button type="submit" class="btn-primary flex-1">上傳</button>
+                            <button type="button" @click="showModal = false" class="btn-secondary flex-1">取消</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

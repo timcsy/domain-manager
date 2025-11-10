@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登入 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100">
+    <div class="w-full max-w-md" x-data="{
+        error: '',
+        loading: false,
+        async login() {
+            this.loading = true;
+            this.error = '';
+            try {
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+
+                const response = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    localStorage.setItem('token', data.data.token);
+                    window.location.href = '/dashboard';
+                } else {
+                    this.error = data.message || '登入失敗，請檢查帳號密碼';
+                }
+            } catch (err) {
+                this.error = '登入失敗，請稍後再試';
+            } finally {
+                this.loading = false;
+            }
+        }
+    }">
+        <div class="card">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">域名管理器</h1>
+                <p class="text-gray-600">Kubernetes Domain Manager</p>
+            </div>
+
+            <!-- Error Message -->
+            <div x-show="error" x-transition class="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p class="text-sm text-red-800" x-text="error"></p>
+            </div>
+
+            <!-- Login Form -->
+            <form @submit.prevent="login">
+                <div class="mb-4">
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+                        使用者名稱
+                    </label>
+                    <input type="text" id="username" name="username" required
+                           class="input" placeholder="admin" :disabled="loading">
+                </div>
+
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                        密碼
+                    </label>
+                    <input type="password" id="password" name="password" required
+                           class="input" placeholder="••••••••" :disabled="loading">
+                </div>
+
+                <button type="submit" class="w-full btn-primary" :disabled="loading">
+                    <span x-show="!loading">登入</span>
+                    <span x-show="loading">登入中...</span>
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-sm text-gray-600">
+                <p>預設帳號: <code class="bg-gray-100 px-2 py-1 rounded">admin</code></p>
+                <p>預設密碼: <code class="bg-gray-100 px-2 py-1 rounded">admin</code></p>
+            </div>
+        </div>
+
+        <div class="mt-6 text-center text-sm text-gray-600">
+            <p>Kubernetes Domain Manager v1.0.0</p>
+        </div>
+    </div>
+</body>
+</html>

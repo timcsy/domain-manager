@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Documentation
+*.md
+docs/
+specs/
+CLAUDE.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+*_test.go
+test/
+tests/
+coverage.txt
+*.test
+
+# Development
+.env
+.env.local
+*.log
+tmp/
+temp/
+
+# Backend specific
+backend/data/
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+
+# Frontend specific
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+bin/
+build/
+dist/
+
+# Helm (包含在另外的上下文中)
+helm/
+
+# Claude & Specify
+.claude/
+.specify/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml

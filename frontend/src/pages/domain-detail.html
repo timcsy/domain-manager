@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>域名詳情 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        // Configure htmx BEFORE it loads
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        // Check authentication
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div x-data="{
+        domainId: null,
+        domain: null,
+        status: null,
+        loading: true,
+        error: null,
+        showEditModal: false,
+        editForm: {
+            target_service: '',
+            target_namespace: '',
+            target_port: 80,
+            ssl_mode: 'auto',
+            enabled: true
+        },
+        async init() {
+            // 從 URL 取得域名 ID
+            const urlParams = new URLSearchParams(window.location.search);
+            this.domainId = urlParams.get('id');
+
+            if (!this.domainId) {
+                this.error = '未指定域名 ID';
+                this.loading = false;
+                return;
+            }
+
+            await this.loadDomain();
+            await this.loadStatus();
+        },
+        async loadDomain() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${this.domainId}`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.domain = data.data;
+                    // 預填編輯表單
+                    this.editForm = {
+                        target_service: this.domain.target_service,
+                        target_namespace: this.domain.target_namespace,
+                        target_port: this.domain.target_port,
+                        ssl_mode: this.domain.ssl_mode,
+                        enabled: this.domain.enabled
+                    };
+                } else {
+                    this.error = data.message || '載入域名失敗';
+                }
+            } catch (err) {
+                console.error('Failed to load domain:', err);
+                this.error = '載入域名失敗';
+            } finally {
+                this.loading = false;
+            }
+        },
+        async loadStatus() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${this.domainId}/status`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.status = data.data;
+                }
+            } catch (err) {
+                console.error('Failed to load status:', err);
+            }
+        },
+        async updateDomain() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${this.domainId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify(this.editForm)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showEditModal = false;
+                    await this.loadDomain();
+                    await this.loadStatus();
+                    alert('域名更新成功！');
+                } else {
+                    alert('域名更新失敗: ' + data.message);
+                }
+            } catch (err) {
+                console.error('Failed to update domain:', err);
+                alert('域名更新失敗');
+            }
+        },
+        async deleteDomain() {
+            if (!confirm('確定要刪除此域名嗎？此操作無法復原。')) return;
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${this.domainId}?hard=true`, {
+                    method: 'DELETE',
+                    headers: { 'X-Session-Token': token }
+                });
+
+                if (response.ok) {
+                    alert('域名已刪除');
+                    window.location.href = '/domains';
+                } else {
+                    alert('刪除域名失敗');
+                }
+            } catch (err) {
+                console.error('Failed to delete domain:', err);
+                alert('刪除域名失敗');
+            }
+        },
+        async refreshStatus() {
+            await this.loadStatus();
+        },
+        getStatusBadgeClass(status) {
+            const statusMap = {
+                'active': 'bg-green-100 text-green-800',
+                'pending': 'bg-yellow-100 text-yellow-800',
+                'error': 'bg-red-100 text-red-800',
+                'disabled': 'bg-gray-100 text-gray-800'
+            };
+            return statusMap[status] || 'bg-gray-100 text-gray-800';
+        },
+        formatDate(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleString('zh-TW');
+        }
+    }" x-init="init()" class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <main class="flex-1 overflow-y-auto">
+            <div class="container mx-auto p-6">
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex items-center gap-4">
+                        <a href="/domains" class="text-blue-600 hover:text-blue-800">← 返回列表</a>
+                        <h1 class="text-2xl font-bold" x-text="domain ? domain.domain_name : '載入中...'"></h1>
+                    </div>
+                    <div class="flex gap-2" x-show="!loading && domain">
+                        <button @click="showEditModal = true" class="btn-secondary">
+                            編輯
+                        </button>
+                        <button @click="deleteDomain()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+                            刪除
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading State -->
+                <div x-show="loading" class="card">
+                    <div class="text-center py-8 text-gray-500">載入中...</div>
+                </div>
+
+                <!-- Error State -->
+                <div x-show="!loading && error" class="card bg-red-50 border border-red-200">
+                    <div class="text-center py-8 text-red-600" x-text="error"></div>
+                </div>
+
+                <!-- Domain Details -->
+                <div x-show="!loading && !error && domain" class="space-y-6">
+                    <!-- Basic Information -->
+                    <div class="card">
+                        <h2 class="text-xl font-semibold mb-4">基本資訊</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">域名</label>
+                                <p class="text-lg" x-text="domain?.domain_name"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">狀態</label>
+                                <div>
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                          :class="getStatusBadgeClass(domain?.status)"
+                                          x-text="domain?.status"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">啟用狀態</label>
+                                <p x-text="domain?.enabled ? '啟用' : '停用'"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">SSL 模式</label>
+                                <p x-text="domain?.ssl_mode"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">建立時間</label>
+                                <p x-text="formatDate(domain?.created_at)"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">更新時間</label>
+                                <p x-text="formatDate(domain?.updated_at)"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Target Service Information -->
+                    <div class="card">
+                        <h2 class="text-xl font-semibold mb-4">目標服務</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">服務名稱</label>
+                                <p class="font-mono" x-text="domain?.target_service"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">命名空間</label>
+                                <p class="font-mono" x-text="domain?.target_namespace"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">埠號</label>
+                                <p class="font-mono" x-text="domain?.target_port"></p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-gray-500">完整位址</label>
+                                <p class="font-mono text-sm" x-text="`${domain?.target_service}.${domain?.target_namespace}.svc.cluster.local:${domain?.target_port}`"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status Information -->
+                    <div class="card">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-semibold">系統狀態</h2>
+                            <button @click="refreshStatus()" class="btn-secondary text-sm">
+                                🔄 重新整理
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4" x-show="status">
+                            <div class="p-4 bg-gray-50 rounded">
+                                <label class="text-sm font-medium text-gray-500">Ingress</label>
+                                <p class="text-lg font-semibold"
+                                   :class="status?.ingress === 'active' ? 'text-green-600' : 'text-yellow-600'"
+                                   x-text="status?.ingress"></p>
+                            </div>
+                            <div class="p-4 bg-gray-50 rounded">
+                                <label class="text-sm font-medium text-gray-500">憑證</label>
+                                <p class="text-lg font-semibold"
+                                   :class="status?.certificate === 'valid' ? 'text-green-600' : 'text-yellow-600'"
+                                   x-text="status?.certificate"></p>
+                            </div>
+                            <div class="p-4 bg-gray-50 rounded">
+                                <label class="text-sm font-medium text-gray-500">DNS</label>
+                                <p class="text-lg font-semibold"
+                                   :class="status?.dns === 'resolved' ? 'text-green-600' : 'text-yellow-600'"
+                                   x-text="status?.dns"></p>
+                            </div>
+                        </div>
+                        <div x-show="!status" class="text-center py-4 text-gray-500">
+                            載入狀態資訊中...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Edit Modal -->
+                <div x-show="showEditModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+                    <div @click.away="showEditModal = false" class="bg-white rounded-lg p-6 w-full max-w-md">
+                        <h3 class="text-lg font-semibold mb-4">編輯域名</h3>
+                        <form @submit.prevent="updateDomain()">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">目標服務</label>
+                                    <input type="text" x-model="editForm.target_service" required class="input" placeholder="my-service">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">命名空間</label>
+                                    <input type="text" x-model="editForm.target_namespace" required class="input">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">埠號</label>
+                                    <input type="number" x-model="editForm.target_port" required class="input">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium mb-1">SSL 模式</label>
+                                    <select x-model="editForm.ssl_mode" class="input">
+                                        <option value="auto">自動</option>
+                                        <option value="manual">手動</option>
+                                        <option value="none">無</option>
+                                    </select>
+                                </div>
+                                <div class="flex items-center">
+                                    <input type="checkbox" x-model="editForm.enabled" id="enabled" class="mr-2">
+                                    <label for="enabled" class="text-sm font-medium">啟用域名</label>
+                                </div>
+                            </div>
+                            <div class="mt-6 flex space-x-3">
+                                <button type="submit" class="btn-primary flex-1">更新</button>
+                                <button type="button" @click="showEditModal = false" class="btn-secondary flex-1">取消</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

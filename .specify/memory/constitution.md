@@ -1,50 +1,79 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+同步影響報告
+版本變更: 初始版本 → 1.0.0
+修改的原則: 無(初始創建)
+新增章節: 核心原則、開發工作流程、治理
+移除章節: 無
+模板更新狀態:
+- ✅ .specify/templates/plan-template.md (已檢查,無需更新)
+- ✅ .specify/templates/spec-template.md (已檢查,無需更新)
+- ✅ .specify/templates/tasks-template.md (已檢查,無需更新)
+後續待辦事項: 無
+-->
 
-## Core Principles
+# Domain Manager 專案憲法
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## 核心原則
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### 一、簡單優先
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+保持簡單設計,避免過度設計。每個功能應該以最簡單可行的方式實作,直到有明確需求才增加複雜度。
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**理由**: YAGNI (You Aren't Gonna Need It) 原則確保開發效率和程式碼可維護性。過度設計會增加不必要的複雜度和維護成本。
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### 二、清晰的資料模型
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+資料結構和模型必須清晰定義,並有明確的用途說明。每個實體應該有單一、明確的職責。
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+**理由**: 清晰的資料模型是系統可維護性和擴展性的基礎,能夠減少誤解和錯誤。
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### 三、適當的測試覆蓋
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+測試應該覆蓋核心功能和關鍵路徑。測試的目的是確保功能正確性,而非追求 100% 覆蓋率。
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+**理由**: 適當的測試平衡了品質保證和開發效率。過多的測試會降低開發速度,過少的測試會影響品質。
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+### 四、文件化決策
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+重要的架構決策和設計選擇必須記錄,包括決策理由和考慮的替代方案。
+
+**理由**: 文件化決策有助於團隊理解系統演進過程,避免重複討論已解決的問題。
+
+## 開發工作流程
+
+### 規格優先
+
+在開始實作前,必須先定義清晰的功能規格,包括:
+- 使用者情境和測試案例
+- 功能需求
+- 成功標準
+
+### 漸進式交付
+
+功能應該按照優先級順序實作,每個使用者故事應該可以獨立測試和交付。優先完成 MVP (最小可行產品),然後根據需求逐步增加功能。
+
+### 程式碼審查
+
+所有變更都應該經過審查,確保符合憲法原則和專案標準。
+
+## 治理
+
+### 修訂程序
+
+憲法修訂需要:
+1. 記錄修訂原因和影響範圍
+2. 更新版本號碼
+3. 檢查並更新相關模板和文件
+
+### 版本規則
+
+版本號碼遵循語義化版本 (MAJOR.MINOR.PATCH):
+- **MAJOR**: 移除或重新定義核心原則,向後不相容的變更
+- **MINOR**: 新增原則或章節,擴展現有指導原則
+- **PATCH**: 文字修正、澄清說明、非語義性調整
+
+### 合規審查
+
+所有功能實作和程式碼審查都必須驗證是否符合本憲法的原則。如果需要增加複雜度,必須在實作計畫中明確說明理由。
+
+**版本**: 1.0.0 | **通過日期**: 2025-11-07 | **最後修訂**: 2025-11-07
