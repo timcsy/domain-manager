@@ -37,7 +37,7 @@ const (
 
 // RenewCertificate renews a certificate if it's close to expiry
 func (c *Client) RenewCertificate(opts *RenewalOptions) (*RenewalResult, error) {
-	if opts.CertPEM == nil || len(opts.CertPEM) == 0 {
+	if len(opts.CertPEM) == 0 {
 		return nil, fmt.Errorf("certificate PEM is required")
 	}
 
