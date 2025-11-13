@@ -28,9 +28,13 @@
         domainId: null,
         domain: null,
         status: null,
+        diagnostics: null,
         loading: true,
         error: null,
         showEditModal: false,
+        namespaces: [],
+        services: [],
+        availablePorts: [],
         editForm: {
             target_service: '',
             target_namespace: '',
@@ -51,6 +55,7 @@
 
             await this.loadDomain();
             await this.loadStatus();
+            await this.loadDiagnostics();
         },
         async loadDomain() {
             try {
@@ -62,14 +67,12 @@
 
                 if (data.success) {
                     this.domain = data.data;
-                    // 預填編輯表單
-                    this.editForm = {
-                        target_service: this.domain.target_service,
-                        target_namespace: this.domain.target_namespace,
-                        target_port: this.domain.target_port,
-                        ssl_mode: this.domain.ssl_mode,
-                        enabled: this.domain.enabled
-                    };
+                    // 預填編輯表單（更新屬性而不是替換物件以保持響應性）
+                    this.editForm.target_service = this.domain.target_service;
+                    this.editForm.target_namespace = this.domain.target_namespace;
+                    this.editForm.target_port = this.domain.target_port;
+                    this.editForm.ssl_mode = this.domain.ssl_mode;
+                    this.editForm.enabled = this.domain.enabled;
                 } else {
                     this.error = data.message || '載入域名失敗';
                 }
@@ -93,6 +96,21 @@
                 }
             } catch (err) {
                 console.error('Failed to load status:', err);
+            }
+        },
+        async loadDiagnostics() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/domains/${this.domainId}/diagnostics`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.diagnostics = data.data;
+                }
+            } catch (err) {
+                console.error('Failed to load diagnostics:', err);
             }
         },
         async updateDomain() {
@@ -144,6 +162,98 @@
         },
         async refreshStatus() {
             await this.loadStatus();
+            await this.loadDiagnostics();
+        },
+        async loadNamespaces() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/services', {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+
+                if (data.success && data.data) {
+                    // Extract unique namespaces from services
+                    const services = data.data.services || data.data;
+                    const namespaceSet = new Set(services.map(s => s.namespace));
+                    this.namespaces = Array.from(namespaceSet).sort();
+                }
+            } catch (err) {
+                console.error('Failed to load namespaces:', err);
+            }
+        },
+        async loadServicesForNamespace(namespace) {
+            if (!namespace) {
+                this.services = [];
+                this.availablePorts = [];
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/services?namespace=${namespace}`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+
+                if (data.success && data.data) {
+                    // Handle both nested {services: [...]} and flat [...] response structures
+                    const services = data.data.services || data.data;
+                    this.services = services.filter(s => s.namespace === namespace);
+                }
+            } catch (err) {
+                console.error('Failed to load services:', err);
+                this.services = [];
+            }
+        },
+        async onNamespaceChange() {
+            await this.loadServicesForNamespace(this.editForm.target_namespace);
+            // Reset service and port selection
+            this.editForm.target_service = '';
+            this.editForm.target_port = 80;
+            this.availablePorts = [];
+        },
+        onServiceChange() {
+            // Find the selected service and populate available ports
+            const selectedService = this.services.find(s => s.name === this.editForm.target_service);
+            if (selectedService && selectedService.ports) {
+                this.availablePorts = selectedService.ports;
+                // Auto-select first port if available
+                if (this.availablePorts.length > 0) {
+                    this.editForm.target_port = this.availablePorts[0].port;
+                }
+            } else {
+                this.availablePorts = [];
+            }
+        },
+        async openEditModal() {
+            // Load all namespaces first
+            await this.loadNamespaces();
+
+            // Ensure current namespace is in the list
+            if (this.editForm.target_namespace && !this.namespaces.includes(this.editForm.target_namespace)) {
+                this.namespaces.push(this.editForm.target_namespace);
+            }
+
+            // Load services for the current namespace
+            if (this.editForm.target_namespace) {
+                await this.loadServicesForNamespace(this.editForm.target_namespace);
+
+                // Ensure current service is in the list (in case it's not returned by the API)
+                if (this.editForm.target_service && !this.services.find(s => s.name === this.editForm.target_service)) {
+                    this.services.push({
+                        name: this.editForm.target_service,
+                        namespace: this.editForm.target_namespace,
+                        ports: []
+                    });
+                }
+
+                // Set available ports for the current service
+                this.onServiceChange();
+            }
+
+            // Show modal - x-if will recreate DOM with current values
+            this.showEditModal = true;
         },
         getStatusBadgeClass(status) {
             const statusMap = {
@@ -153,6 +263,34 @@
                 'disabled': 'bg-gray-100 text-gray-800'
             };
             return statusMap[status] || 'bg-gray-100 text-gray-800';
+        },
+        getDiagnosticStatusClass(status) {
+            const statusMap = {
+                'healthy': 'bg-green-100 text-green-800 border-green-200',
+                'warning': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+                'error': 'bg-red-100 text-red-800 border-red-200',
+                'not_found': 'bg-red-100 text-red-800 border-red-200',
+                'not_configured': 'bg-gray-100 text-gray-800 border-gray-200'
+            };
+            return statusMap[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+        },
+        getHealthBadgeClass(health) {
+            const healthMap = {
+                'healthy': 'bg-green-100 text-green-800',
+                'degraded': 'bg-yellow-100 text-yellow-800',
+                'error': 'bg-red-100 text-red-800'
+            };
+            return healthMap[health] || 'bg-gray-100 text-gray-800';
+        },
+        getStatusIcon(status) {
+            const iconMap = {
+                'healthy': '✓',
+                'warning': '⚠',
+                'error': '✗',
+                'not_found': '✗',
+                'not_configured': '-'
+            };
+            return iconMap[status] || '?';
         },
         formatDate(dateStr) {
             if (!dateStr) return '-';
@@ -171,7 +309,7 @@
                         <h1 class="text-2xl font-bold" x-text="domain ? domain.domain_name : '載入中...'"></h1>
                     </div>
                     <div class="flex gap-2" x-show="!loading && domain">
-                        <button @click="showEditModal = true" class="btn-secondary">
+                        <button @click="openEditModal()" class="btn-secondary">
                             編輯
                         </button>
                         <button @click="deleteDomain()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
@@ -250,57 +388,153 @@
                         </div>
                     </div>
 
-                    <!-- Status Information -->
+                    <!-- Diagnostics Information -->
                     <div class="card">
                         <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-semibold">系統狀態</h2>
+                            <div>
+                                <h2 class="text-xl font-semibold">診斷資訊</h2>
+                                <p class="text-sm text-gray-500" x-show="diagnostics" x-text="'最後檢查: ' + formatDate(diagnostics?.last_checked)"></p>
+                            </div>
                             <button @click="refreshStatus()" class="btn-secondary text-sm">
                                 🔄 重新整理
                             </button>
                         </div>
-                        <div class="grid grid-cols-3 gap-4" x-show="status">
-                            <div class="p-4 bg-gray-50 rounded">
-                                <label class="text-sm font-medium text-gray-500">Ingress</label>
-                                <p class="text-lg font-semibold"
-                                   :class="status?.ingress === 'active' ? 'text-green-600' : 'text-yellow-600'"
-                                   x-text="status?.ingress"></p>
+
+                        <div x-show="diagnostics" class="space-y-4">
+                            <!-- Overall Health -->
+                            <div class="p-4 border-2 rounded-lg" :class="getHealthBadgeClass(diagnostics?.overall_health)">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <label class="text-sm font-medium">整體健康狀態</label>
+                                        <p class="text-2xl font-bold" x-text="diagnostics?.overall_health"></p>
+                                    </div>
+                                    <div class="text-4xl" x-text="getStatusIcon(diagnostics?.overall_health)"></div>
+                                </div>
                             </div>
-                            <div class="p-4 bg-gray-50 rounded">
-                                <label class="text-sm font-medium text-gray-500">憑證</label>
-                                <p class="text-lg font-semibold"
-                                   :class="status?.certificate === 'valid' ? 'text-green-600' : 'text-yellow-600'"
-                                   x-text="status?.certificate"></p>
+
+                            <!-- Ingress Diagnostics -->
+                            <div class="border rounded-lg p-4" :class="getDiagnosticStatusClass(diagnostics?.ingress?.status)">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xl" x-text="getStatusIcon(diagnostics?.ingress?.status)"></span>
+                                            <h3 class="font-semibold text-lg">Ingress 狀態</h3>
+                                        </div>
+                                        <p class="text-sm mb-2" x-text="diagnostics?.ingress?.message"></p>
+                                        <div class="text-xs space-y-1">
+                                            <div x-show="diagnostics?.ingress?.configured">
+                                                <span class="font-medium">配置狀態:</span>
+                                                <span x-text="diagnostics?.ingress?.configured ? '已配置' : '未配置'"></span>
+                                            </div>
+                                            <div x-show="diagnostics?.ingress?.host">
+                                                <span class="font-medium">主機:</span>
+                                                <span class="font-mono" x-text="diagnostics?.ingress?.host"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="p-4 bg-gray-50 rounded">
-                                <label class="text-sm font-medium text-gray-500">DNS</label>
-                                <p class="text-lg font-semibold"
-                                   :class="status?.dns === 'resolved' ? 'text-green-600' : 'text-yellow-600'"
-                                   x-text="status?.dns"></p>
+
+                            <!-- Service Diagnostics -->
+                            <div class="border rounded-lg p-4" :class="getDiagnosticStatusClass(diagnostics?.service?.status)">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xl" x-text="getStatusIcon(diagnostics?.service?.status)"></span>
+                                            <h3 class="font-semibold text-lg">服務狀態</h3>
+                                        </div>
+                                        <p class="text-sm mb-2" x-text="diagnostics?.service?.message"></p>
+                                        <div class="text-xs space-y-1">
+                                            <div x-show="diagnostics?.service?.namespace">
+                                                <span class="font-medium">命名空間:</span>
+                                                <span class="font-mono" x-text="diagnostics?.service?.namespace"></span>
+                                            </div>
+                                            <div x-show="diagnostics?.service?.name">
+                                                <span class="font-medium">服務名稱:</span>
+                                                <span class="font-mono" x-text="diagnostics?.service?.name"></span>
+                                            </div>
+                                            <div x-show="diagnostics?.service?.port">
+                                                <span class="font-medium">埠號:</span>
+                                                <span class="font-mono" x-text="diagnostics?.service?.port"></span>
+                                            </div>
+                                            <div>
+                                                <span class="font-medium">可達性:</span>
+                                                <span x-text="diagnostics?.service?.reachable ? '可達' : '不可達'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Certificate Diagnostics -->
+                            <div class="border rounded-lg p-4" :class="getDiagnosticStatusClass(diagnostics?.certificate?.status)">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <span class="text-xl" x-text="getStatusIcon(diagnostics?.certificate?.status)"></span>
+                                            <h3 class="font-semibold text-lg">憑證狀態</h3>
+                                        </div>
+                                        <p class="text-sm mb-2" x-text="diagnostics?.certificate?.message"></p>
+                                        <div class="text-xs space-y-1">
+                                            <div>
+                                                <span class="font-medium">配置狀態:</span>
+                                                <span x-text="diagnostics?.certificate?.configured ? '已配置' : '未配置'"></span>
+                                            </div>
+                                            <div x-show="diagnostics?.certificate?.expires_at">
+                                                <span class="font-medium">到期時間:</span>
+                                                <span x-text="formatDate(diagnostics?.certificate?.expires_at)"></span>
+                                            </div>
+                                            <div x-show="diagnostics?.certificate?.days_remaining !== undefined">
+                                                <span class="font-medium">剩餘天數:</span>
+                                                <span x-text="diagnostics?.certificate?.days_remaining + ' 天'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div x-show="!status" class="text-center py-4 text-gray-500">
-                            載入狀態資訊中...
+
+                        <div x-show="!diagnostics" class="text-center py-8 text-gray-500">
+                            載入診斷資訊中...
                         </div>
                     </div>
                 </div>
 
                 <!-- Edit Modal -->
-                <div x-show="showEditModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
-                    <div @click.away="showEditModal = false" class="bg-white rounded-lg p-6 w-full max-w-md">
+                <template x-if="showEditModal">
+                    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div @click.away="showEditModal = false" class="bg-white rounded-lg p-6 w-full max-w-md">
                         <h3 class="text-lg font-semibold mb-4">編輯域名</h3>
                         <form @submit.prevent="updateDomain()">
                             <div class="space-y-4">
                                 <div>
-                                    <label class="block text-sm font-medium mb-1">目標服務</label>
-                                    <input type="text" x-model="editForm.target_service" required class="input" placeholder="my-service">
+                                    <label class="block text-sm font-medium mb-1">命名空間</label>
+                                    <select x-model="editForm.target_namespace" @change="onNamespaceChange()" required class="input">
+                                        <option value="">請選擇命名空間</option>
+                                        <template x-for="ns in namespaces" :key="ns">
+                                            <option :value="ns" x-text="ns" :selected="ns === editForm.target_namespace"></option>
+                                        </template>
+                                    </select>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium mb-1">命名空間</label>
-                                    <input type="text" x-model="editForm.target_namespace" required class="input">
+                                    <label class="block text-sm font-medium mb-1">目標服務</label>
+                                    <select x-model="editForm.target_service" @change="onServiceChange()" required class="input" :disabled="!editForm.target_namespace || services.length === 0">
+                                        <option value="">請選擇服務</option>
+                                        <template x-for="service in services" :key="service.name">
+                                            <option :value="service.name" x-text="service.name" :selected="service.name === editForm.target_service"></option>
+                                        </template>
+                                    </select>
+                                    <p x-show="editForm.target_namespace && services.length === 0" class="text-sm text-gray-500 mt-1">此命名空間沒有可用的服務</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium mb-1">埠號</label>
-                                    <input type="number" x-model="editForm.target_port" required class="input">
+                                    <select x-show="availablePorts.length > 0" x-model.number="editForm.target_port" required class="input">
+                                        <template x-for="portInfo in availablePorts" :key="portInfo.port">
+                                            <option :value="portInfo.port" x-text="`${portInfo.port}${portInfo.name ? ' (' + portInfo.name + ')' : ''}`"></option>
+                                        </template>
+                                    </select>
+                                    <input x-show="availablePorts.length === 0" type="number" x-model.number="editForm.target_port" required class="input" :disabled="!editForm.target_service">
+                                    <p x-show="availablePorts.length === 0 && editForm.target_service" class="text-sm text-gray-500 mt-1">手動輸入埠號</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium mb-1">SSL 模式</label>
@@ -320,8 +554,9 @@
                                 <button type="button" @click="showEditModal = false" class="btn-secondary flex-1">取消</button>
                             </div>
                         </form>
+                        </div>
                     </div>
-                </div>
+                </template>
             </div>
         </main>
     </div>

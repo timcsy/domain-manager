@@ -160,12 +160,43 @@ GET    /api/v1/diagnostics/health  # 健康檢查
 
 ## 配置
 
+### 環境變數
+
+後端支援以下環境變數配置:
+
+```bash
+# 資料庫設定
+DATABASE_PATH="./data/database.db"
+
+# Kubernetes 設定
+K8S_MOCK="false"                    # 開發模式 (不連接實際 K8s 叢集)
+K8S_IN_CLUSTER="true"               # 是否在 K8s 叢集內運行
+
+# Let's Encrypt 設定
+LETSENCRYPT_EMAIL="admin@example.com"           # 聯絡信箱 (用於憑證到期通知)
+LETSENCRYPT_ACCOUNT_PATH="./data/letsencrypt"  # 帳戶資料儲存路徑
+LETSENCRYPT_STAGING="false"                     # 使用 staging 環境 (測試用)
+
+# 伺服器設定
+PORT="8080"                         # HTTP 服務埠號
+FRONTEND_PATH="../frontend"         # 前端檔案路徑
+```
+
+**重要**: Let's Encrypt staging 環境用於測試，不會簽發真實憑證。生產環境請設定 `LETSENCRYPT_STAGING=false`。
+
+### Helm values.yaml 配置
+
 主要配置透過 Helm values.yaml:
 
 ```yaml
 admin:
   password: "your-password"
   email: "admin@example.com"
+
+# Let's Encrypt 配置
+letsencrypt:
+  email: "admin@example.com"        # 用於憑證到期通知
+  staging: false                    # 生產環境使用 false，測試使用 true
 
 ingress:
   className: "nginx"

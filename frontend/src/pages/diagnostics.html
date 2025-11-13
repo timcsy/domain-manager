@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>診斷日誌 - 域名管理器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-gray-50">
+    <div x-data="diagnosticsApp()" x-init="init()">
+        <!-- 導航列 -->
+        <nav class="bg-white shadow-sm border-b border-gray-200">
+            <div class="container mx-auto px-4">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center space-x-8">
+                        <h1 class="text-xl font-bold text-gray-800">Kubernetes 域名管理器</h1>
+                        <div class="hidden md:flex space-x-4">
+                            <a href="domains.html" class="text-gray-600 hover:text-gray-900">域名管理</a>
+                            <a href="diagnostics.html" class="text-blue-600 font-medium">診斷日誌</a>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm text-gray-600" x-text="'歡迎, ' + username"></span>
+                        <button @click="logout()" class="text-sm text-red-600 hover:text-red-800">登出</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主要內容 -->
+        <div class="container mx-auto px-4 py-8">
+            <!-- 頁面標題 -->
+            <div class="mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">診斷日誌</h2>
+                <p class="text-gray-600 mt-1">查看系統診斷日誌和子域名健康檢查記錄</p>
+            </div>
+
+            <!-- 篩選器 -->
+            <div class="card mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <!-- 域名篩選 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">域名</label>
+                        <select x-model="filter.domainId" @change="loadLogs()" class="input">
+                            <option value="">全部域名</option>
+                            <template x-for="domain in domains" :key="domain.id">
+                                <option :value="domain.id" x-text="domain.domain_name"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- 檢查類型篩選 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">檢查類型</label>
+                        <select x-model="filter.checkType" @change="loadLogs()" class="input">
+                            <option value="">全部類型</option>
+                            <option value="health">健康檢查</option>
+                            <option value="ssl">SSL憑證</option>
+                            <option value="dns">DNS解析</option>
+                            <option value="connectivity">連線測試</option>
+                        </select>
+                    </div>
+
+                    <!-- 狀態篩選 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">狀態</label>
+                        <select x-model="filter.status" @change="loadLogs()" class="input">
+                            <option value="">全部狀態</option>
+                            <option value="success">成功</option>
+                            <option value="warning">警告</option>
+                            <option value="error">錯誤</option>
+                        </select>
+                    </div>
+
+                    <!-- 已解決篩選 -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">已解決</label>
+                        <select x-model="filter.resolved" @change="loadLogs()" class="input">
+                            <option value="">全部</option>
+                            <option value="false">未解決</option>
+                            <option value="true">已解決</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex justify-between items-center">
+                    <div class="text-sm text-gray-600">
+                        共 <span x-text="pagination.total"></span> 筆記錄
+                    </div>
+                    <button @click="loadLogs()" class="btn-secondary text-sm">
+                        重新載入
+                    </button>
+                </div>
+            </div>
+
+            <!-- 日誌列表 -->
+            <div class="card">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    時間
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    域名
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    類型
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    狀態
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    訊息
+                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    操作
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <template x-if="logs.length === 0">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                        尚無診斷日誌
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-for="log in logs" :key="log.id">
+                                <tr :class="log.resolved ? 'bg-gray-50' : ''">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <span x-text="formatDate(log.created_at)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <span x-text="log.domain_name"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <span x-text="formatCheckType(log.check_type)"></span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                              :class="{
+                                                  'bg-green-100 text-green-800': log.status === 'success',
+                                                  'bg-yellow-100 text-yellow-800': log.status === 'warning',
+                                                  'bg-red-100 text-red-800': log.status === 'error'
+                                              }"
+                                              x-text="formatStatus(log.status)">
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-500">
+                                        <div class="max-w-xs truncate" :title="log.message">
+                                            <span x-text="log.message"></span>
+                                        </div>
+                                        <template x-if="log.details">
+                                            <button @click="showDetails(log)" class="text-blue-600 hover:text-blue-800 text-xs mt-1">
+                                                查看詳情
+                                            </button>
+                                        </template>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <template x-if="!log.resolved">
+                                            <button @click="markResolved(log.id)" class="text-blue-600 hover:text-blue-800">
+                                                標記已解決
+                                            </button>
+                                        </template>
+                                        <template x-if="log.resolved">
+                                            <span class="text-gray-400">已解決</span>
+                                        </template>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分頁 -->
+                <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between" x-show="pagination.total > 0">
+                    <div class="text-sm text-gray-700">
+                        顯示第 <span x-text="(pagination.page - 1) * pagination.limit + 1"></span>
+                        到 <span x-text="Math.min(pagination.page * pagination.limit, pagination.total)"></span> 筆，
+                        共 <span x-text="pagination.total"></span> 筆
+                    </div>
+                    <div class="flex space-x-2">
+                        <button @click="prevPage()" :disabled="pagination.page === 1"
+                                class="px-3 py-1 border rounded text-sm"
+                                :class="pagination.page === 1 ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-50'">
+                            上一頁
+                        </button>
+                        <button @click="nextPage()" :disabled="pagination.page * pagination.limit >= pagination.total"
+                                class="px-3 py-1 border rounded text-sm"
+                                :class="pagination.page * pagination.limit >= pagination.total ? 'text-gray-400 cursor-not-allowed' : 'text-gray-700 hover:bg-gray-50'">
+                            下一頁
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 詳情 Modal -->
+        <div x-show="showDetailsModal"
+             x-cloak
+             @click.away="showDetailsModal = false"
+             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+            <div @click.stop class="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-medium text-gray-900">日誌詳情</h3>
+                        <button @click="showDetailsModal = false" class="text-gray-400 hover:text-gray-500">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="px-6 py-4" x-show="selectedLog">
+                    <dl class="space-y-4">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">域名</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.domain_name"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">檢查類型</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="formatCheckType(selectedLog?.check_type)"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">狀態</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="formatStatus(selectedLog?.status)"></dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">訊息</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="selectedLog?.message"></dd>
+                        </div>
+                        <div x-show="selectedLog?.details">
+                            <dt class="text-sm font-medium text-gray-500">詳細資訊</dt>
+                            <dd class="mt-1 text-sm text-gray-900">
+                                <pre class="bg-gray-50 p-3 rounded overflow-x-auto text-xs" x-text="formatDetails(selectedLog?.details)"></pre>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">建立時間</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="formatDate(selectedLog?.created_at)"></dd>
+                        </div>
+                        <div x-show="selectedLog?.resolved">
+                            <dt class="text-sm font-medium text-gray-500">解決時間</dt>
+                            <dd class="mt-1 text-sm text-gray-900" x-text="formatDate(selectedLog?.resolved_at)"></dd>
+                        </div>
+                    </dl>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-200 flex justify-end">
+                    <button @click="showDetailsModal = false" class="btn-secondary">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function diagnosticsApp() {
+            return {
+                username: '',
+                logs: [],
+                domains: [],
+                filter: {
+                    domainId: '',
+                    checkType: '',
+                    status: '',
+                    resolved: ''
+                },
+                pagination: {
+                    page: 1,
+                    limit: 20,
+                    total: 0
+                },
+                showDetailsModal: false,
+                selectedLog: null,
+
+                async init() {
+                    // 檢查登入狀態
+                    const token = localStorage.getItem('token');
+                    if (!token) {
+                        window.location.href = 'login.html';
+                        return;
+                    }
+
+                    this.username = localStorage.getItem('username') || 'Admin';
+                    await this.loadDomains();
+                    await this.loadLogs();
+                },
+
+                async loadDomains() {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/domains?limit=1000', {
+                            headers: {
+                                'X-Session-Token': token
+                            }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.domains = data.data || [];
+                        }
+                    } catch (err) {
+                        console.error('Failed to load domains:', err);
+                    }
+                },
+
+                async loadLogs() {
+                    try {
+                        const token = localStorage.getItem('token');
+
+                        // 建立查詢參數
+                        const params = new URLSearchParams({
+                            limit: this.pagination.limit,
+                            offset: (this.pagination.page - 1) * this.pagination.limit
+                        });
+
+                        if (this.filter.domainId) params.append('domain_id', this.filter.domainId);
+                        if (this.filter.checkType) params.append('check_type', this.filter.checkType);
+                        if (this.filter.status) params.append('status', this.filter.status);
+                        if (this.filter.resolved) params.append('resolved', this.filter.resolved);
+
+                        const response = await fetch(`/api/v1/diagnostic-logs?${params}`, {
+                            headers: {
+                                'X-Session-Token': token
+                            }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.logs = data.data || [];
+                            this.pagination.total = data.total || 0;
+                        } else {
+                            console.error('Failed to load logs:', response.statusText);
+                        }
+                    } catch (err) {
+                        console.error('Failed to load logs:', err);
+                        alert('載入診斷日誌失敗');
+                    }
+                },
+
+                async markResolved(id) {
+                    if (!confirm('確定要標記此日誌為已解決嗎？')) return;
+
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch(`/api/v1/diagnostic-logs/${id}/resolve`, {
+                            method: 'POST',
+                            headers: {
+                                'X-Session-Token': token
+                            }
+                        });
+
+                        if (response.ok) {
+                            alert('已標記為已解決');
+                            await this.loadLogs();
+                        } else {
+                            alert('標記失敗');
+                        }
+                    } catch (err) {
+                        console.error('Failed to mark as resolved:', err);
+                        alert('標記失敗');
+                    }
+                },
+
+                showDetails(log) {
+                    this.selectedLog = log;
+                    this.showDetailsModal = true;
+                },
+
+                formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    return date.toLocaleString('zh-TW', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                },
+
+                formatCheckType(type) {
+                    const types = {
+                        'health': '健康檢查',
+                        'ssl': 'SSL憑證',
+                        'dns': 'DNS解析',
+                        'connectivity': '連線測試'
+                    };
+                    return types[type] || type;
+                },
+
+                formatStatus(status) {
+                    const statuses = {
+                        'success': '成功',
+                        'warning': '警告',
+                        'error': '錯誤'
+                    };
+                    return statuses[status] || status;
+                },
+
+                formatDetails(details) {
+                    if (!details) return '';
+                    try {
+                        const obj = JSON.parse(details);
+                        return JSON.stringify(obj, null, 2);
+                    } catch {
+                        return details;
+                    }
+                },
+
+                nextPage() {
+                    if (this.pagination.page * this.pagination.limit < this.pagination.total) {
+                        this.pagination.page++;
+                        this.loadLogs();
+                    }
+                },
+
+                prevPage() {
+                    if (this.pagination.page > 1) {
+                        this.pagination.page--;
+                        this.loadLogs();
+                    }
+                },
+
+                logout() {
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('username');
+                    window.location.href = 'login.html';
+                }
+            }
+        }
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        .card {
+            @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+        }
+
+        .input {
+            @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500;
+        }
+
+        .btn-secondary {
+            @apply px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500;
+        }
+    </style>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# 基本子域名配置範例
+# 使用方式: helm install domain-manager ./helm/domain-manager -f examples/basic-subdomains.yaml
+
+# 管理員設定
+admin:
+  username: admin
+  password: "my-secure-password-123"
+  email: "admin@example.com"
+
+# 子域名配置
+subdomains:
+  # 使用 Let's Encrypt 自動申請 SSL 憑證
+  defaultSslMode: "auto"
+
+  # 使用 nginx ingress controller
+  defaultIngressClass: "nginx"
+
+  # 啟用健康檢查，每 5 分鐘檢查一次
+  healthCheck:
+    enabled: true
+    schedule: "*/5 * * * *"
+    timeout: 10s
+
+# Ingress 設定
+ingress:
+  className: "nginx"
+  certManager:
+    enabled: true
+    issuerEmail: "admin@example.com"
+    # 生產環境使用
+    acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
+
+# 持久化儲存
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: "standard"
+
+# 資源配置
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi

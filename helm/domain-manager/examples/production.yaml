@@ -1,0 +1,87 @@
+# 生產環境配置範例
+# 包含高可用性、備份、監控等生產級配置
+
+# 副本數設為 2 以提供高可用性
+replicaCount: 2
+
+# 使用私有鏡像倉庫
+image:
+  repository: registry.example.com/domain-manager
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+imagePullSecrets:
+  - name: registry-secret
+
+# 管理員設定
+admin:
+  username: admin
+  password: "CHANGE_ME_IN_PRODUCTION"  # 請使用 Kubernetes Secret
+  email: "ops@example.com"
+
+# 子域名配置
+subdomains:
+  defaultSslMode: "auto"
+  defaultIngressClass: "nginx"
+
+  healthCheck:
+    enabled: true
+    # 生產環境每 2 分鐘檢查一次
+    schedule: "*/2 * * * *"
+    timeout: 10s
+    healthyStatusCodes: [200, 201, 202, 203, 204, 205, 206, 300, 301, 302, 303, 304, 307, 308]
+
+# Ingress 設定
+ingress:
+  className: "nginx"
+  certManager:
+    enabled: true
+    issuerEmail: "ops@example.com"
+    acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
+
+# 持久化儲存
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: "fast-ssd"
+  accessMode: ReadWriteOnce
+
+# 備份配置
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # 每天凌晨 2 點備份
+  retentionDays: 30
+
+# 資源配置 - 生產環境建議值
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Pod 反親和性 - 確保副本分佈在不同節點
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app.kubernetes.io/name
+            operator: In
+            values:
+            - domain-manager
+        topologyKey: kubernetes.io/hostname
+
+# 節點選擇器 - 部署到生產節點
+nodeSelector:
+  node-role: production
+
+# 容忍度 - 允許部署到有特定污點的節點
+tolerations:
+  - key: "production"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"

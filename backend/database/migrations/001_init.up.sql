@@ -17,10 +17,10 @@ CREATE TABLE IF NOT EXISTS domains (
     FOREIGN KEY (certificate_id) REFERENCES certificates(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_domains_domain_name ON domains(domain_name);
-CREATE INDEX idx_domains_status ON domains(status);
-CREATE INDEX idx_domains_enabled ON domains(enabled);
-CREATE INDEX idx_domains_target_service ON domains(target_service, target_namespace);
+CREATE INDEX IF NOT EXISTS idx_domains_domain_name ON domains(domain_name);
+CREATE INDEX IF NOT EXISTS idx_domains_status ON domains(status);
+CREATE INDEX IF NOT EXISTS idx_domains_enabled ON domains(enabled);
+CREATE INDEX IF NOT EXISTS idx_domains_target_service ON domains(target_service, target_namespace);
 
 -- Table: certificates (SSL 憑證)
 CREATE TABLE IF NOT EXISTS certificates (
@@ -42,11 +42,11 @@ CREATE TABLE IF NOT EXISTS certificates (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_certificates_domain_name ON certificates(domain_name);
-CREATE INDEX idx_certificates_status ON certificates(status);
-CREATE INDEX idx_certificates_valid_until ON certificates(valid_until);
-CREATE INDEX idx_certificates_auto_renew ON certificates(auto_renew);
-CREATE INDEX idx_certificates_k8s_secret ON certificates(k8s_secret_name, k8s_secret_namespace);
+CREATE INDEX IF NOT EXISTS idx_certificates_domain_name ON certificates(domain_name);
+CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates(status);
+CREATE INDEX IF NOT EXISTS idx_certificates_valid_until ON certificates(valid_until);
+CREATE INDEX IF NOT EXISTS idx_certificates_auto_renew ON certificates(auto_renew);
+CREATE INDEX IF NOT EXISTS idx_certificates_k8s_secret ON certificates(k8s_secret_name, k8s_secret_namespace);
 
 -- Table: diagnostic_logs (診斷記錄)
 CREATE TABLE IF NOT EXISTS diagnostic_logs (
@@ -61,11 +61,11 @@ CREATE TABLE IF NOT EXISTS diagnostic_logs (
     FOREIGN KEY (domain_id) REFERENCES domains(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_diagnostic_logs_domain_id ON diagnostic_logs(domain_id);
-CREATE INDEX idx_diagnostic_logs_log_type ON diagnostic_logs(log_type);
-CREATE INDEX idx_diagnostic_logs_category ON diagnostic_logs(category);
-CREATE INDEX idx_diagnostic_logs_resolved ON diagnostic_logs(resolved);
-CREATE INDEX idx_diagnostic_logs_created_at ON diagnostic_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_logs_domain_id ON diagnostic_logs(domain_id);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_logs_log_type ON diagnostic_logs(log_type);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_logs_category ON diagnostic_logs(category);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_logs_resolved ON diagnostic_logs(resolved);
+CREATE INDEX IF NOT EXISTS idx_diagnostic_logs_created_at ON diagnostic_logs(created_at);
 
 -- Table: admin_accounts (管理員帳戶)
 CREATE TABLE IF NOT EXISTS admin_accounts (
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS admin_accounts (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX idx_admin_accounts_username ON admin_accounts(username);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_accounts_username ON admin_accounts(username);
 
 -- Table: api_keys (API 金鑰)
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -94,9 +94,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
     FOREIGN KEY (admin_id) REFERENCES admin_accounts(id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX idx_api_keys_key_value ON api_keys(key_value);
-CREATE INDEX idx_api_keys_admin_id ON api_keys(admin_id);
-CREATE INDEX idx_api_keys_enabled ON api_keys(enabled);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_key_value ON api_keys(key_value);
+CREATE INDEX IF NOT EXISTS idx_api_keys_admin_id ON api_keys(admin_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_enabled ON api_keys(enabled);
 
 -- Table: system_settings (系統設定)
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 
 -- Insert default system settings
-INSERT INTO system_settings (key, value, description) VALUES
+INSERT OR IGNORE INTO system_settings (key, value, description) VALUES
     ('letsencrypt_email', '', 'Let''s Encrypt 註冊郵箱'),
     ('letsencrypt_server', 'https://acme-v02.api.letsencrypt.org/directory', 'ACME 伺服器地址'),
     ('default_ingress_class', 'nginx', '預設 Ingress Class'),
@@ -119,5 +119,5 @@ INSERT INTO system_settings (key, value, description) VALUES
 
 -- Insert default admin account (password: admin - should be changed on first login)
 -- Password hash for 'admin' using bcrypt cost 10
-INSERT INTO admin_accounts (username, password_hash, email) VALUES
+INSERT OR IGNORE INTO admin_accounts (username, password_hash, email) VALUES
     ('admin', '$2a$10$qcgCDlh6uLPMEMMKjEzMLew/.4oJvkhdcb21u3diANtVUafhiFdYC', 'admin@localhost');

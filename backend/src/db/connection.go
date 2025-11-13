@@ -40,20 +40,26 @@ func Initialize(cfg *Config) error {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
 
-	// Open database connection
-	db, err := sql.Open("sqlite", cfg.DatabasePath)
+	// Open database connection with WAL mode and busy timeout for better concurrency
+	db, err := sql.Open("sqlite", cfg.DatabasePath+"?_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL")
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	// Configure connection pool (set to 1 for SQLite to avoid lock contention)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(cfg.MaxLifetime)
 
 	// Test connection
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Enable additional SQLite optimizations
+	_, err = db.Exec("PRAGMA foreign_keys = ON; PRAGMA cache_size = -64000;")
+	if err != nil {
+		log.Printf("Warning: Failed to set SQLite pragmas: %v", err)
 	}
 
 	DB = db

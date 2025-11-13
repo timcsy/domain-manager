@@ -144,12 +144,18 @@ admin:
   password: "your-secure-password-here"
   email: "admin@example.com"  # 用於 Let's Encrypt 通知
 
+# Let's Encrypt 配置 (內建 ACME 客戶端)
+letsencrypt:
+  email: "admin@example.com"           # 用於憑證到期通知
+  staging: false                       # 測試環境請設為 true
+  accountPath: "/data/letsencrypt"     # 帳戶資料儲存路徑
+
 ingress:
   # Ingress Class 名稱
   className: "nginx"
-  # 如果使用 cert-manager
+  # 如果使用 cert-manager (可選，與內建 Let's Encrypt 二選一)
   certManager:
-    enabled: true
+    enabled: false                     # 如使用內建 Let's Encrypt 請設為 false
     issuerEmail: "admin@example.com"
 
 persistence:
@@ -741,6 +747,13 @@ env:
     value: "info"
   - name: DATABASE_PATH
     value: "/data/database.db"
+  # Let's Encrypt 配置
+  - name: LETSENCRYPT_EMAIL
+    value: "admin@example.com"
+  - name: LETSENCRYPT_ACCOUNT_PATH
+    value: "/data/letsencrypt"
+  - name: LETSENCRYPT_STAGING
+    value: "false"  # 測試環境請設為 "true"
 ```
 
 ---

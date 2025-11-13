@@ -130,3 +130,12 @@ func ExtractCertificateInfo(certPEM string) (issuer string, validFrom, validUnti
 
 	return cert.Issuer.CommonName, cert.NotBefore, cert.NotAfter, nil
 }
+
+// CertificateFilter represents filters for listing certificates
+type CertificateFilter struct {
+	Status     string
+	DomainName string
+	Source     string
+	Limit      int
+	Offset     int
+}

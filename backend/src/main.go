@@ -13,6 +13,7 @@ import (
 	"github.com/domain-manager/backend/src/api"
 	"github.com/domain-manager/backend/src/db"
 	"github.com/domain-manager/backend/src/k8s"
+	"github.com/domain-manager/backend/src/services/scheduler"
 )
 
 func main() {
@@ -33,6 +34,11 @@ func main() {
 
 	// Initialize services
 	api.InitializeServices()
+
+	// Initialize and start scheduler
+	if err := api.InitializeScheduler(); err != nil {
+		log.Fatalf("Failed to initialize scheduler: %v", err)
+	}
 
 	// Create router
 	router := api.NewRouter()
@@ -65,6 +71,12 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Stop scheduler
+	log.Println("Stopping scheduler...")
+	if err := scheduler.StopGlobal(); err != nil {
+		log.Printf("Warning: Failed to stop scheduler: %v", err)
+	}
 
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)

@@ -50,9 +50,11 @@
                                 headers: { 'X-Session-Token': token }
                             });
                             const domainsData = await domainsResponse.json();
-                            if (domainsData.success && domainsData.pagination) {
-                                this.totalDomains = domainsData.pagination.total || 0;
-                                this.activeDomains = domainsData.data.filter(d => d.enabled && d.status === 'active').length;
+                            if (domainsData.success && domainsData.data) {
+                                // 過濾掉已刪除的域名
+                                const activeDomainsList = domainsData.data.filter(d => d.status !== 'deleted');
+                                this.totalDomains = activeDomainsList.length;
+                                this.activeDomains = activeDomainsList.filter(d => d.enabled && d.status === 'active').length;
                             }
 
                             // Load certificates

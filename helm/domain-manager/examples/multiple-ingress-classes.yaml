@@ -1,0 +1,48 @@
+# 多 Ingress Class 配置範例
+# 適用於集群中有多個 Ingress Controller 的情況
+
+admin:
+  password: "my-secure-password"
+  email: "admin@example.com"
+
+# 子域名配置 - 使用 Traefik
+subdomains:
+  defaultSslMode: "auto"
+  # 預設使用 Traefik Ingress Controller
+  defaultIngressClass: "traefik"
+
+  healthCheck:
+    enabled: true
+    schedule: "*/5 * * * *"
+    timeout: 10s
+
+# 主要 Ingress 使用 Nginx
+ingress:
+  className: "nginx"
+  certManager:
+    enabled: true
+    issuerEmail: "admin@example.com"
+    acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
+
+persistence:
+  enabled: true
+  size: 2Gi
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# 使用範例:
+#
+# 1. 系統本身的 Web UI 使用 nginx ingress controller
+# 2. 透過系統管理的子域名預設使用 traefik ingress controller
+#
+# 這樣可以實現：
+# - domain-manager.example.com (nginx) -> Web UI
+# - app1.example.com (traefik) -> 應用 1
+# - app2.example.com (traefik) -> 應用 2
+# - api.example.com (traefik) -> API 服務

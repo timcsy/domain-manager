@@ -27,7 +27,9 @@
     <div x-data="{
         showModal: false,
         certificates: [],
+        expiringCertificates: [],
         loading: true,
+        expiringDays: 30,
         formData: {
             domain_name: '',
             certificate_pem: '',
@@ -50,6 +52,20 @@
                 this.loading = false;
             }
         },
+        async loadExpiringCertificates() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/certificates/expiring?days=${this.expiringDays}`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.expiringCertificates = data.data.certificates || [];
+                }
+            } catch (err) {
+                console.error('Failed to load expiring certificates:', err);
+            }
+        },
         async uploadCertificate() {
             try {
                 const token = localStorage.getItem('token');
@@ -66,6 +82,7 @@
                     this.showModal = false;
                     this.formData = { domain_name: '', certificate_pem: '', private_key_pem: '' };
                     await this.loadCertificates();
+                    await this.loadExpiringCertificates();
                     alert('憑證上傳成功！');
                 } else {
                     alert('憑證上傳失敗: ' + data.message);
@@ -85,6 +102,7 @@
                 });
                 if (response.ok) {
                     await this.loadCertificates();
+                    await this.loadExpiringCertificates();
                     alert('憑證已刪除');
                 }
             } catch (err) {
@@ -116,7 +134,7 @@
             if (days === 0) return '今天到期';
             return `${days} 天`;
         }
-    }" x-init="loadCertificates()" class="flex h-screen">
+    }" x-init="loadCertificates(); loadExpiringCertificates()" class="flex h-screen">
         <!-- Sidebar -->
         <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
 
@@ -127,6 +145,37 @@
                     <button @click="showModal = true" class="btn-primary">
                         + 上傳憑證
                     </button>
+                </div>
+
+                <!-- Expiring Certificates Warning -->
+                <div x-show="expiringCertificates.length > 0" class="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-yellow-600 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        <div class="flex-1">
+                            <h3 class="text-sm font-semibold text-yellow-800 mb-2">
+                                即將到期憑證警告
+                                <span class="ml-2 px-2 py-1 bg-yellow-100 rounded-full text-xs" x-text="`${expiringCertificates.length} 個憑證`"></span>
+                            </h3>
+                            <p class="text-sm text-yellow-700 mb-3">
+                                以下憑證將在 <span x-text="expiringDays"></span> 天內到期，請盡快更新：
+                            </p>
+                            <div class="space-y-2">
+                                <template x-for="cert in expiringCertificates" :key="cert.id">
+                                    <div class="flex items-center justify-between bg-white rounded p-3 text-sm">
+                                        <div class="flex items-center space-x-4">
+                                            <span class="font-medium text-gray-900" x-text="cert.domain_name"></span>
+                                            <span class="px-2 py-1 rounded-full text-xs font-semibold"
+                                                  :class="getExpiryClass(getDaysUntilExpiry(cert.valid_until))"
+                                                  x-text="getExpiryText(getDaysUntilExpiry(cert.valid_until))"></span>
+                                        </div>
+                                        <span class="text-gray-500 text-xs" x-text="`到期日: ${formatDate(cert.valid_until)}`"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Certificate List -->
@@ -162,8 +211,8 @@
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="cert.domain_name"></td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                             <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                                  :class="cert.source === 'letsencrypt' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'"
-                                                  x-text="cert.source === 'letsencrypt' ? 'Let\'s Encrypt' : '手動上傳'"></span>
+                                                  :class="(cert.source === 'letsencrypt' || cert.source === 'cert-manager') ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'"
+                                                  x-text="(cert.source === 'letsencrypt' || cert.source === 'cert-manager') ? 'Let\'s Encrypt' : '手動上傳'"></span>
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="cert.issuer || 'N/A'"></td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(cert.valid_until)"></td>

@@ -59,6 +59,8 @@ kubeconfig*
 *.pem
 secrets/
 *.secret.yaml
+K8s-tew.yaml
+**/K8s-tew.yaml
 
 # Temporary files
 *.tmp

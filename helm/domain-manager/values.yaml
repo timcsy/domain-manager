@@ -2,12 +2,20 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# cert-manager dependency
+# Set to false if cert-manager is already installed in the cluster
+cert-manager:
+  enabled: true
+  installCRDs: true
+  # You can customize cert-manager settings here
+  # For full options, see: https://github.com/cert-manager/cert-manager/tree/master/deploy/charts/cert-manager
+
 replicaCount: 1
 
 image:
-  repository: domain-manager/domain-manager
+  repository: ghcr.io/timcsy/domain-manager
   pullPolicy: IfNotPresent
-  tag: "1.0.0"
+  tag: "v0.2.10"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -25,10 +33,31 @@ ingress:
   className: "nginx"
   certManager:
     enabled: true
-    issuerEmail: "admin@example.com"
+    issuerEmail: "timcsy@tew.tw"
     acmeServer: "https://acme-v02.api.letsencrypt.org/directory"
     # For testing, use staging:
     # acmeServer: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+# Subdomain management configuration
+subdomains:
+  # Default SSL mode for new subdomains
+  # Options: "none", "manual", "auto" (Let's Encrypt)
+  defaultSslMode: "auto"
+
+  # Default ingress class for subdomains
+  # Use the same class as above ingress.className
+  defaultIngressClass: "nginx"
+
+  # Health check configuration
+  healthCheck:
+    enabled: true
+    # How often to check subdomain health (cron format)
+    # Default: every 5 minutes
+    schedule: "*/5 * * * *"
+    # Timeout for HTTP health checks
+    timeout: 10s
+    # Consider 2xx and 3xx as healthy
+    healthyStatusCodes: [200, 201, 202, 203, 204, 205, 206, 300, 301, 302, 303, 304, 307, 308]
 
 # Persistence configuration
 persistence:
@@ -91,7 +120,7 @@ securityContext:
 # Probes
 livenessProbe:
   httpGet:
-    path: /api/v1/diagnostics/health
+    path: /health
     port: 8080
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -100,7 +129,7 @@ livenessProbe:
 
 readinessProbe:
   httpGet:
-    path: /api/v1/diagnostics/health
+    path: /health
     port: 8080
   initialDelaySeconds: 10
   periodSeconds: 5
@@ -115,6 +144,10 @@ env:
     value: "/data/database.db"
   - name: PORT
     value: "8080"
+  - name: LETSENCRYPT_EMAIL
+    value: "timcsy@tew.tw"
+  - name: LETSENCRYPT_ENV
+    value: "production"
 
 # Node selector
 nodeSelector: {}

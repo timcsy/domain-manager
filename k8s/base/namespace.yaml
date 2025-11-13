@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: domain-manager
+  labels:
+    name: domain-manager
+    app: domain-manager

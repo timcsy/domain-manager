@@ -36,6 +36,30 @@ func NewServiceManager() *ServiceManager {
 	return &ServiceManager{}
 }
 
+// ListNamespaces 列出所有命名空間
+func (m *ServiceManager) ListNamespaces() ([]string, error) {
+	if IsMockMode() {
+		return m.listNamespacesMock()
+	}
+
+	if Client == nil {
+		return nil, fmt.Errorf("Kubernetes client is not initialized")
+	}
+
+	ctx := context.Background()
+	namespaceList, err := Client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list namespaces: %w", err)
+	}
+
+	var namespaces []string
+	for _, ns := range namespaceList.Items {
+		namespaces = append(namespaces, ns.Name)
+	}
+
+	return namespaces, nil
+}
+
 // ListServices 列出命名空間中的所有 Service
 func (m *ServiceManager) ListServices(namespace string) ([]ServiceInfo, error) {
 	if IsMockMode() {
@@ -50,6 +74,31 @@ func (m *ServiceManager) ListServices(namespace string) ([]ServiceInfo, error) {
 	serviceList, err := Client.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list services: %w", err)
+	}
+
+	var services []ServiceInfo
+	for _, svc := range serviceList.Items {
+		services = append(services, m.convertServiceToInfo(&svc))
+	}
+
+	return services, nil
+}
+
+// ListAllServices 列出所有命名空間中的 Service
+func (m *ServiceManager) ListAllServices() ([]ServiceInfo, error) {
+	if IsMockMode() {
+		return m.listAllServicesMock()
+	}
+
+	if Client == nil {
+		return nil, fmt.Errorf("Kubernetes client is not initialized")
+	}
+
+	ctx := context.Background()
+	// 使用空字串列出所有命名空間的服務
+	serviceList, err := Client.CoreV1().Services("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list all services: %w", err)
 	}
 
 	var services []ServiceInfo
@@ -161,34 +210,30 @@ func (m *ServiceManager) convertServiceToInfo(svc *corev1.Service) ServiceInfo {
 func (m *ServiceManager) listServicesMock(namespace string) ([]ServiceInfo, error) {
 	log.Printf("🔧 [MOCK] Listing Services in namespace: %s", namespace)
 
-	return []ServiceInfo{
-		{
-			Name:      "mock-service-1",
-			Namespace: namespace,
-			Type:      "ClusterIP",
-			ClusterIP: "10.96.0.1",
-			Ports: []ServicePort{
-				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
-			},
-			Selector: map[string]string{"app": "mock-app"},
-		},
-		{
-			Name:      "mock-service-2",
-			Namespace: namespace,
-			Type:      "ClusterIP",
-			ClusterIP: "10.96.0.2",
-			Ports: []ServicePort{
-				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
-				{Name: "https", Port: 443, TargetPort: "8443", Protocol: "TCP"},
-			},
-			Selector: map[string]string{"app": "mock-app-2"},
-		},
-	}, nil
+	// Get all services and filter by namespace
+	allServices, _ := m.listAllServicesMock()
+	var services []ServiceInfo
+	for _, svc := range allServices {
+		if svc.Namespace == namespace {
+			services = append(services, svc)
+		}
+	}
+
+	return services, nil
 }
 
 func (m *ServiceManager) getServiceMock(namespace, name string) (*ServiceInfo, error) {
 	log.Printf("🔧 [MOCK] Getting Service: %s/%s", namespace, name)
 
+	// Get all services and find the matching one
+	allServices, _ := m.listAllServicesMock()
+	for _, svc := range allServices {
+		if svc.Namespace == namespace && svc.Name == name {
+			return &svc, nil
+		}
+	}
+
+	// If not found, return a generic mock service
 	return &ServiceInfo{
 		Name:      name,
 		Namespace: namespace,
@@ -210,4 +255,78 @@ func (m *ServiceManager) validateServiceMock(namespace, name string, port int) e
 func (m *ServiceManager) serviceExistsMock(namespace, name string) (bool, error) {
 	log.Printf("🔧 [MOCK] Checking if Service exists: %s/%s", namespace, name)
 	return true, nil
+}
+
+func (m *ServiceManager) listNamespacesMock() ([]string, error) {
+	log.Printf("🔧 [MOCK] Listing Namespaces")
+	return []string{"default", "kube-system", "kube-public", "mock-namespace"}, nil
+}
+
+func (m *ServiceManager) listAllServicesMock() ([]ServiceInfo, error) {
+	log.Printf("🔧 [MOCK] Listing All Services across all namespaces")
+	return []ServiceInfo{
+		{
+			Name:      "mock-service-1",
+			Namespace: "default",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.1",
+			Ports: []ServicePort{
+				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"app": "mock-app"},
+		},
+		{
+			Name:      "mock-service-2",
+			Namespace: "default",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.2",
+			Ports: []ServicePort{
+				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
+				{Name: "https", Port: 443, TargetPort: "8443", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"app": "mock-app-2"},
+		},
+		{
+			Name:      "kube-dns",
+			Namespace: "kube-system",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.10",
+			Ports: []ServicePort{
+				{Name: "dns", Port: 53, TargetPort: "53", Protocol: "UDP"},
+				{Name: "dns-tcp", Port: 53, TargetPort: "53", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"k8s-app": "kube-dns"},
+		},
+		{
+			Name:      "mock-service-1",
+			Namespace: "mock-namespace",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.20",
+			Ports: []ServicePort{
+				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"app": "mock-app"},
+		},
+		{
+			Name:      "mock-service-2",
+			Namespace: "mock-namespace",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.21",
+			Ports: []ServicePort{
+				{Name: "http", Port: 80, TargetPort: "8080", Protocol: "TCP"},
+				{Name: "https", Port: 443, TargetPort: "8443", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"app": "mock-app-2"},
+		},
+		{
+			Name:      "test-service",
+			Namespace: "mock-namespace",
+			Type:      "ClusterIP",
+			ClusterIP: "10.96.0.22",
+			Ports: []ServicePort{
+				{Name: "web", Port: 8080, TargetPort: "8080", Protocol: "TCP"},
+			},
+			Selector: map[string]string{"app": "test"},
+		},
+	}, nil
 }
