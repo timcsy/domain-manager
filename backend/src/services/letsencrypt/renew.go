@@ -71,8 +71,12 @@ func (c *Client) RenewCertificate(opts *RenewalOptions) (*RenewalResult, error) 
 		IssuerCertificate: nil, // Not required for renewal
 	}
 
-	// Perform renewal
-	newCert, err := c.client.Certificate.Renew(*certResource, true, false, "")
+	// Perform renewal using the new RenewWithOptions method
+	newCert, err := c.client.Certificate.RenewWithOptions(*certResource, &certificate.RenewOptions{
+		Bundle:                  true,
+		PreferredChain:          "",
+		AlwaysDeactivateAuthorizations: false,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to renew certificate: %w", err)
 	}

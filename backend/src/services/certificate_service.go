@@ -60,7 +60,7 @@ func (s *CertificateService) UploadCertificate(
 		for _, verr := range validationResult.Errors {
 			errorMsg += fmt.Sprintf("\n  - %s", verr.Error())
 		}
-		return nil, fmt.Errorf(errorMsg)
+		return nil, fmt.Errorf("%s", errorMsg)
 	}
 
 	// 記錄警告（如果有的話）
@@ -80,7 +80,7 @@ func (s *CertificateService) UploadCertificate(
 		for _, verr := range domainValidation.Errors {
 			errorMsg += fmt.Sprintf("\n  - %s", verr.Error())
 		}
-		return nil, fmt.Errorf(errorMsg)
+		return nil, fmt.Errorf("%s", errorMsg)
 	}
 
 	// 使用驗證後的憑證物件
