@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/domain-manager/backend/src/models"
 	"github.com/domain-manager/backend/src/repositories"
 	"github.com/domain-manager/backend/src/services"
+	"github.com/domain-manager/backend/src/services/letsencrypt"
+	"github.com/domain-manager/backend/src/services/scheduler"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -35,6 +38,12 @@ func InitializeServices() {
 	domainService.SetCertificateRepository(certRepo)
 	certificateService = services.NewCertificateService(certRepo, domainRepo)
 	settingsService = services.NewSettingsService(settingsRepo)
+
+	// Initialize Let's Encrypt client
+	if err := initializeLetsEncrypt(); err != nil {
+		log.Printf("Warning: Let's Encrypt initialization failed: %v", err)
+		log.Printf("Let's Encrypt certificate features will be disabled")
+	}
 
 	// Seed default admin account if it doesn't exist
 	if err := seedDefaultAdmin(adminRepo); err != nil {
@@ -66,6 +75,65 @@ func seedDefaultAdmin(adminRepo *repositories.AdminAccountRepository) error {
 	}
 
 	log.Println("✅ Default admin account created successfully")
+	return nil
+}
+
+// initializeLetsEncrypt initializes the Let's Encrypt client
+func initializeLetsEncrypt() error {
+	email := os.Getenv("LETSENCRYPT_EMAIL")
+	if email == "" {
+		email = "admin@localhost" // Default email
+		log.Printf("LETSENCRYPT_EMAIL not set, using default: %s", email)
+	}
+
+	accountPath := os.Getenv("LETSENCRYPT_ACCOUNT_PATH")
+	if accountPath == "" {
+		accountPath = "./data/letsencrypt" // Default path
+	}
+
+	staging := os.Getenv("LETSENCRYPT_STAGING") == "true"
+	if staging {
+		log.Println("Let's Encrypt: Using STAGING environment")
+	} else {
+		log.Println("Let's Encrypt: Using PRODUCTION environment")
+	}
+
+	config := &letsencrypt.Config{
+		Email:       email,
+		AccountPath: accountPath,
+		Staging:     staging,
+	}
+
+	if err := letsencrypt.Initialize(config); err != nil {
+		return fmt.Errorf("failed to initialize Let's Encrypt: %w", err)
+	}
+
+	log.Println("✅ Let's Encrypt client initialized successfully")
+	return nil
+}
+
+// InitializeScheduler initializes and starts the background task scheduler
+func InitializeScheduler() error {
+	// Initialize scheduler
+	if err := scheduler.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize scheduler: %w", err)
+	}
+
+	// Create certificate monitor
+	certMonitor := scheduler.NewCertificateMonitor(
+		scheduler.DefaultCertificateMonitorConfig(),
+		certificateService,
+	)
+
+	// Register monitor with scheduler
+	certMonitor.RegisterWithScheduler(scheduler.GetScheduler())
+
+	// Start scheduler
+	if err := scheduler.StartGlobal(); err != nil {
+		return fmt.Errorf("failed to start scheduler: %w", err)
+	}
+
+	log.Println("✅ Scheduler initialized and started successfully")
 	return nil
 }
 
@@ -104,6 +172,7 @@ func HandleLogout(w http.ResponseWriter, r *http.Request) {
 func HandleListDomains(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	status := r.URL.Query().Get("status")
+	parent := r.URL.Query().Get("parent")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
 
@@ -114,6 +183,31 @@ func HandleListDomains(w http.ResponseWriter, r *http.Request) {
 		perPage = 20
 	}
 
+	// If parent query parameter is provided, return subdomains
+	if parent != "" {
+		subdomains, err := domainService.GetSubdomains(parent)
+		if err != nil {
+			Error(w, http.StatusInternalServerError, "Failed to get subdomains")
+			return
+		}
+
+		// Apply pagination to subdomains
+		total := len(subdomains)
+		start := (page - 1) * perPage
+		end := start + perPage
+		if start > total {
+			start = total
+		}
+		if end > total {
+			end = total
+		}
+		paginatedSubdomains := subdomains[start:end]
+
+		Paginated(w, paginatedSubdomains, page, perPage, total)
+		return
+	}
+
+	// Otherwise, list all domains with filter
 	filter := models.DomainFilter{
 		Status: status,
 		Limit:  perPage,
@@ -235,6 +329,181 @@ func HandleGetDomainStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Success(w, status, "")
+}
+
+func HandleGetDomainDiagnostics(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "Invalid domain ID")
+		return
+	}
+
+	diagnosticSvc := services.NewDiagnosticService()
+	diagnostics, err := diagnosticSvc.GetDomainDiagnostics(id)
+	if err != nil {
+		log.Printf("Failed to get domain diagnostics: %v", err)
+		Error(w, http.StatusInternalServerError, "Failed to get domain diagnostics")
+		return
+	}
+
+	Success(w, diagnostics, "Domain diagnostics retrieved successfully")
+}
+
+func HandleGetDomainTree(w http.ResponseWriter, r *http.Request) {
+	tree, err := domainService.GetDomainTree()
+	if err != nil {
+		log.Printf("Failed to get domain tree: %v", err)
+		Error(w, http.StatusInternalServerError, "Failed to get domain tree")
+		return
+	}
+
+	response := map[string]interface{}{
+		"tree":  tree,
+		"count": len(tree),
+	}
+
+	Success(w, response, "Domain tree retrieved successfully")
+}
+
+func HandleBatchCreateDomains(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Domains []*models.DomainCreateRequest `json:"domains"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Domains) == 0 {
+		Error(w, http.StatusBadRequest, "No domains provided")
+		return
+	}
+
+	result := domainService.BulkCreateDomains(req.Domains)
+
+	response := map[string]interface{}{
+		"total":           result.Total,
+		"success":         result.Success,
+		"failed":          result.Failed,
+		"errors":          result.Errors,
+		"success_domains": result.SuccessDomains,
+	}
+
+	// Return 207 Multi-Status if there were partial failures
+	if result.Failed > 0 && result.Success > 0 {
+		w.WriteHeader(http.StatusMultiStatus)
+		Success(w, response, "Batch create completed with some failures")
+		return
+	}
+
+	// Return 400 if all failed
+	if result.Failed > 0 && result.Success == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		Success(w, response, "All domains failed to create")
+		return
+	}
+
+	// Return 201 if all succeeded
+	w.WriteHeader(http.StatusCreated)
+	Success(w, response, "All domains created successfully")
+}
+
+func HandleBatchDeleteDomains(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs  []int64 `json:"ids"`
+		Hard bool    `json:"hard"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		Error(w, http.StatusBadRequest, "No domain IDs provided")
+		return
+	}
+
+	result := domainService.BulkDeleteDomains(req.IDs, req.Hard)
+
+	response := map[string]interface{}{
+		"total":           result.Total,
+		"success":         result.Success,
+		"failed":          result.Failed,
+		"errors":          result.Errors,
+		"success_domains": result.SuccessDomains,
+	}
+
+	// Return 207 Multi-Status if there were partial failures
+	if result.Failed > 0 && result.Success > 0 {
+		w.WriteHeader(http.StatusMultiStatus)
+		Success(w, response, "Batch delete completed with some failures")
+		return
+	}
+
+	// Return 400 if all failed
+	if result.Failed > 0 && result.Success == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		Success(w, response, "All domains failed to delete")
+		return
+	}
+
+	// Return 200 if all succeeded
+	Success(w, response, "All domains deleted successfully")
+}
+
+func HandleBatchUpdateDomains(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Updates []struct {
+			ID     int64                         `json:"id"`
+			Update *models.DomainUpdateRequest  `json:"update"`
+		} `json:"updates"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if len(req.Updates) == 0 {
+		Error(w, http.StatusBadRequest, "No domain updates provided")
+		return
+	}
+
+	// Convert to map for service layer
+	updates := make(map[int64]*models.DomainUpdateRequest)
+	for _, update := range req.Updates {
+		updates[update.ID] = update.Update
+	}
+
+	result := domainService.BulkUpdateDomains(updates)
+
+	response := map[string]interface{}{
+		"total":           result.Total,
+		"success":         result.Success,
+		"failed":          result.Failed,
+		"errors":          result.Errors,
+		"success_domains": result.SuccessDomains,
+	}
+
+	// Return 207 Multi-Status if there were partial failures
+	if result.Failed > 0 && result.Success > 0 {
+		w.WriteHeader(http.StatusMultiStatus)
+		Success(w, response, "Batch update completed with some failures")
+		return
+	}
+
+	// Return 400 if all failed
+	if result.Failed > 0 && result.Success == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		Success(w, response, "All domains failed to update")
+		return
+	}
+
+	// Return 200 if all succeeded
+	Success(w, response, "All domains updated successfully")
 }
 
 // Settings handlers
@@ -374,17 +643,98 @@ func HandleDeleteCertificate(w http.ResponseWriter, r *http.Request) {
 	Success(w, nil, "Certificate deleted successfully")
 }
 
+func HandleRenewCertificate(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "Invalid certificate ID")
+		return
+	}
+
+	// Renew the certificate
+	cert, err := certificateService.RenewCertificate(id)
+	if err != nil {
+		log.Printf("Failed to renew certificate: %v", err)
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to renew certificate: %v", err))
+		return
+	}
+
+	Success(w, cert, "Certificate renewed successfully")
+}
+
+func HandleGetExpiringCertificates(w http.ResponseWriter, r *http.Request) {
+	// 解析查詢參數：幾天內到期，預設 30 天
+	daysStr := r.URL.Query().Get("days")
+	days := 30
+	if daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 {
+			days = d
+		}
+	}
+
+	// 獲取即將到期的憑證
+	certs, err := certificateService.GetExpiringCertificates(days)
+	if err != nil {
+		log.Printf("Failed to get expiring certificates: %v", err)
+		Error(w, http.StatusInternalServerError, "Failed to get expiring certificates")
+		return
+	}
+
+	response := map[string]interface{}{
+		"certificates": certs,
+		"days":         days,
+		"count":        len(certs),
+	}
+
+	Success(w, response, fmt.Sprintf("Found %d certificates expiring within %d days", len(certs), days))
+}
+
 // Service handlers
 
 func HandleListServices(w http.ResponseWriter, r *http.Request) {
-	// 解析查詢參數
-	namespace := r.URL.Query().Get("namespace")
-	if namespace == "" {
-		namespace = "default"
+	serviceMgr := k8s.NewServiceManager()
+
+	// 檢查是否要列出所有命名空間
+	allNamespaces := r.URL.Query().Get("all_namespaces") == "true"
+
+	if allNamespaces {
+		// 列出所有命名空間
+		namespaces, err := serviceMgr.ListNamespaces()
+		if err != nil {
+			log.Printf("Failed to list namespaces: %v", err)
+			Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list namespaces: %v", err))
+			return
+		}
+
+		response := map[string]interface{}{
+			"namespaces": namespaces,
+		}
+		Success(w, response, "Namespaces retrieved successfully")
+		return
 	}
 
-	// 使用 ServiceManager 列出服務
-	serviceMgr := k8s.NewServiceManager()
+	// 解析查詢參數
+	namespace := r.URL.Query().Get("namespace")
+
+	// 如果沒有指定命名空間，列出所有命名空間的服務
+	if namespace == "" {
+		services, err := serviceMgr.ListAllServices()
+		if err != nil {
+			log.Printf("Failed to list all services: %v", err)
+			Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list all services: %v", err))
+			return
+		}
+
+		response := map[string]interface{}{
+			"services": services,
+			"count":    len(services),
+		}
+
+		Success(w, response, "All services retrieved successfully")
+		return
+	}
+
+	// 使用 ServiceManager 列出特定命名空間的服務
 	services, err := serviceMgr.ListServices(namespace)
 	if err != nil {
 		log.Printf("Failed to list services: %v", err)

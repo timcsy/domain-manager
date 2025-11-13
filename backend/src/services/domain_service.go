@@ -3,23 +3,27 @@ package services
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/domain-manager/backend/src/k8s"
 	"github.com/domain-manager/backend/src/models"
 	"github.com/domain-manager/backend/src/repositories"
+	"github.com/domain-manager/backend/src/services/subdomain"
 )
 
 // DomainService handles domain business logic
 type DomainService struct {
-	domainRepo *repositories.DomainRepository
-	certRepo   *repositories.CertificateRepository
+	domainRepo        *repositories.DomainRepository
+	certRepo          *repositories.CertificateRepository
+	subdomainValidator *subdomain.SubdomainValidator
 }
 
 // NewDomainService creates a new domain service
 func NewDomainService(domainRepo *repositories.DomainRepository) *DomainService {
 	return &DomainService{
-		domainRepo: domainRepo,
-		certRepo:   nil, // Will be set later if needed
+		domainRepo:        domainRepo,
+		certRepo:          nil, // Will be set later if needed
+		subdomainValidator: subdomain.NewValidator(),
 	}
 }
 
@@ -64,9 +68,9 @@ func (s *DomainService) CreateDomain(req *models.DomainCreateRequest) (*models.D
 		return nil, err
 	}
 
-	// Check if domain already exists
+	// Check if domain already exists (excluding deleted domains)
 	existing, err := s.domainRepo.GetByName(req.DomainName)
-	if err == nil && existing != nil {
+	if err == nil && existing != nil && existing.Status != "deleted" {
 		return nil, models.ErrDomainExists
 	}
 
@@ -109,6 +113,9 @@ func (s *DomainService) UpdateDomain(id int64, req *models.DomainUpdateRequest) 
 	}
 	if req.SSLMode != nil {
 		domain.SSLMode = *req.SSLMode
+	}
+	if req.Status != nil {
+		domain.Status = *req.Status
 	}
 	if req.Enabled != nil {
 		domain.Enabled = *req.Enabled
@@ -157,13 +164,22 @@ func (s *DomainService) createIngressForDomain(domain *models.Domain) {
 	ingressMgr := k8s.NewIngressManager()
 
 	// 準備 Ingress 配置
+	ingressClassName := "nginx"
 	cfg := &k8s.IngressConfig{
-		Name:          fmt.Sprintf("domain-%d", domain.ID),
-		Namespace:     domain.TargetNamespace,
-		Host:          domain.DomainName,
-		ServiceName:   domain.TargetService,
-		ServicePort:   domain.TargetPort,
-		TLSSecretName: "", // 將在建立憑證時設定
+		Name:             fmt.Sprintf("domain-%d", domain.ID),
+		Namespace:        domain.TargetNamespace,
+		Host:             domain.DomainName,
+		ServiceName:      domain.TargetService,
+		ServicePort:      domain.TargetPort,
+		IngressClassName: &ingressClassName,
+	}
+
+	// 如果啟用自動 SSL，配置 Let's Encrypt
+	if domain.SSLMode == "auto" {
+		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		cfg.Annotations = map[string]string{
+			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
+		}
 	}
 
 	// 建立 Ingress
@@ -186,13 +202,22 @@ func (s *DomainService) updateIngressForDomain(domain *models.Domain) {
 	ingressMgr := k8s.NewIngressManager()
 
 	// 準備 Ingress 配置
+	ingressClassName := "nginx"
 	cfg := &k8s.IngressConfig{
-		Name:          fmt.Sprintf("domain-%d", domain.ID),
-		Namespace:     domain.TargetNamespace,
-		Host:          domain.DomainName,
-		ServiceName:   domain.TargetService,
-		ServicePort:   domain.TargetPort,
-		TLSSecretName: "", // TODO: 從 certificate 取得
+		Name:             fmt.Sprintf("domain-%d", domain.ID),
+		Namespace:        domain.TargetNamespace,
+		Host:             domain.DomainName,
+		ServiceName:      domain.TargetService,
+		ServicePort:      domain.TargetPort,
+		IngressClassName: &ingressClassName,
+	}
+
+	// 如果啟用自動 SSL，配置 Let's Encrypt
+	if domain.SSLMode == "auto" {
+		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		cfg.Annotations = map[string]string{
+			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
+		}
 	}
 
 	// 更新 Ingress
@@ -248,4 +273,339 @@ func (s *DomainService) GetDomainStatus(id int64) (map[string]interface{}, error
 	}
 
 	return status, nil
+}
+
+// CheckSubdomainConflict checks for subdomain conflicts with existing domains
+func (s *DomainService) CheckSubdomainConflict(domainName string) ([]subdomain.SubdomainConflict, error) {
+	// Get all existing domain names
+	allDomains, err := s.domainRepo.List(models.DomainFilter{Limit: 1000})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list domains: %w", err)
+	}
+
+	existingNames := make([]string, len(allDomains))
+	for i, d := range allDomains {
+		existingNames[i] = d.DomainName
+	}
+
+	// Check for conflicts
+	conflicts := s.subdomainValidator.CheckSubdomainConflict(domainName, existingNames)
+	return conflicts, nil
+}
+
+// ValidateSubdomain validates a subdomain format
+func (s *DomainService) ValidateSubdomain(domainName string) (*subdomain.ValidationResult, error) {
+	return s.subdomainValidator.ValidateSubdomain(domainName)
+}
+
+// GroupByRootDomain groups domains by their root domain
+// For domains like dns.k8s.tew.tw and dashboard.k8s.tew.tw,
+// it finds the common parent (k8s.tew.tw) as the root domain
+func (s *DomainService) GroupByRootDomain() (map[string][]*models.Domain, error) {
+	allDomains, err := s.domainRepo.List(models.DomainFilter{Limit: 1000})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list domains: %w", err)
+	}
+
+	// Filter out deleted domains
+	var activeDomains []*models.Domain
+	for _, domain := range allDomains {
+		if domain.Status != "deleted" {
+			activeDomains = append(activeDomains, domain)
+		}
+	}
+
+	if len(activeDomains) == 0 {
+		return make(map[string][]*models.Domain), nil
+	}
+
+	// Find the longest common suffix for each group
+	groups := make(map[string][]*models.Domain)
+
+	for _, domain := range activeDomains {
+		// Find the best root domain for this domain
+		rootDomain := findBestRootDomain(domain.DomainName, activeDomains)
+		groups[rootDomain] = append(groups[rootDomain], domain)
+	}
+
+	return groups, nil
+}
+
+// findBestRootDomain finds the longest common suffix among domains
+// that could be grouped together
+func findBestRootDomain(domainName string, allDomains []*models.Domain) string {
+	labels := strings.Split(domainName, ".")
+
+	// Try from longest suffix to shortest (but keep at least 2 labels for valid domain)
+	for i := 0; i < len(labels)-1; i++ {
+		candidate := strings.Join(labels[i:], ".")
+
+		// Check if this candidate is a good grouping point
+		// (either it exists as a domain, or multiple domains share it as suffix)
+		matchCount := 0
+		for _, d := range allDomains {
+			if d.DomainName == candidate || strings.HasSuffix(d.DomainName, "."+candidate) {
+				matchCount++
+			}
+		}
+
+		// If multiple domains share this suffix, it's a good root domain
+		if matchCount > 1 {
+			return candidate
+		}
+	}
+
+	// Fallback: use the standard root domain (last 2 labels)
+	if len(labels) >= 2 {
+		return strings.Join(labels[len(labels)-2:], ".")
+	}
+
+	return domainName
+}
+
+// GetSubdomains retrieves all subdomains for a given root domain
+func (s *DomainService) GetSubdomains(rootDomain string) ([]*models.Domain, error) {
+	allDomains, err := s.domainRepo.List(models.DomainFilter{Limit: 1000})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list domains: %w", err)
+	}
+
+	subdomains := []*models.Domain{}
+	for _, domain := range allDomains {
+		if s.subdomainValidator.IsSubdomain(domain.DomainName) {
+			if s.subdomainValidator.GetRootDomain(domain.DomainName) == rootDomain {
+				subdomains = append(subdomains, domain)
+			}
+		}
+	}
+
+	return subdomains, nil
+}
+
+// BulkOperationResult represents the result of a bulk operation
+type BulkOperationResult struct {
+	Success      int
+	Failed       int
+	Total        int
+	Errors       []BulkOperationError
+	SuccessDomains []*models.Domain
+}
+
+// BulkOperationError represents an error in a bulk operation
+type BulkOperationError struct {
+	DomainName string
+	Error      string
+}
+
+// BulkCreateDomains creates multiple domains in a single operation
+func (s *DomainService) BulkCreateDomains(requests []*models.DomainCreateRequest) *BulkOperationResult {
+	result := &BulkOperationResult{
+		Total:          len(requests),
+		Errors:         []BulkOperationError{},
+		SuccessDomains: []*models.Domain{},
+	}
+
+	for _, req := range requests {
+		domain, err := s.CreateDomain(req)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BulkOperationError{
+				DomainName: req.DomainName,
+				Error:      err.Error(),
+			})
+		} else {
+			result.Success++
+			result.SuccessDomains = append(result.SuccessDomains, domain)
+		}
+	}
+
+	log.Printf("✅ Bulk create completed: %d success, %d failed out of %d total", result.Success, result.Failed, result.Total)
+	return result
+}
+
+// BulkUpdateDomains updates multiple domains in a single operation
+func (s *DomainService) BulkUpdateDomains(updates map[int64]*models.DomainUpdateRequest) *BulkOperationResult {
+	result := &BulkOperationResult{
+		Total:          len(updates),
+		Errors:         []BulkOperationError{},
+		SuccessDomains: []*models.Domain{},
+	}
+
+	for id, req := range updates {
+		domain, err := s.UpdateDomain(id, req)
+		if err != nil {
+			result.Failed++
+			// Get domain name for error reporting
+			domainName := fmt.Sprintf("ID:%d", id)
+			if existingDomain, getErr := s.domainRepo.GetByID(id); getErr == nil && existingDomain != nil {
+				domainName = existingDomain.DomainName
+			}
+			result.Errors = append(result.Errors, BulkOperationError{
+				DomainName: domainName,
+				Error:      err.Error(),
+			})
+		} else {
+			result.Success++
+			result.SuccessDomains = append(result.SuccessDomains, domain)
+		}
+	}
+
+	log.Printf("✅ Bulk update completed: %d success, %d failed out of %d total", result.Success, result.Failed, result.Total)
+	return result
+}
+
+// BulkDeleteDomains deletes multiple domains in a single operation
+func (s *DomainService) BulkDeleteDomains(ids []int64, hard bool) *BulkOperationResult {
+	result := &BulkOperationResult{
+		Total:          len(ids),
+		Errors:         []BulkOperationError{},
+		SuccessDomains: []*models.Domain{},
+	}
+
+	for _, id := range ids {
+		// Get domain name for result reporting
+		domainName := fmt.Sprintf("ID:%d", id)
+		existingDomain, getErr := s.domainRepo.GetByID(id)
+		if getErr == nil && existingDomain != nil {
+			domainName = existingDomain.DomainName
+		}
+
+		err := s.DeleteDomain(id, hard)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BulkOperationError{
+				DomainName: domainName,
+				Error:      err.Error(),
+			})
+		} else {
+			result.Success++
+			if existingDomain != nil {
+				result.SuccessDomains = append(result.SuccessDomains, existingDomain)
+			}
+		}
+	}
+
+	log.Printf("✅ Bulk delete completed: %d success, %d failed out of %d total", result.Success, result.Failed, result.Total)
+	return result
+}
+
+// GetDomainTree builds a tree structure of all domains grouped by root domain
+func (s *DomainService) GetDomainTree() ([]*models.DomainTreeNode, error) {
+	// Get all domains grouped by root domain
+	groups, err := s.GroupByRootDomain()
+	if err != nil {
+		return nil, fmt.Errorf("failed to group domains: %w", err)
+	}
+
+	// Build tree nodes
+	var treeNodes []*models.DomainTreeNode
+	for rootDomain, domains := range groups {
+		// Find the root domain object (if it exists)
+		var rootDomainObj *models.Domain
+		var subdomains []*models.Domain
+
+		for _, domain := range domains {
+			if domain.DomainName == rootDomain {
+				rootDomainObj = domain
+			} else {
+				subdomains = append(subdomains, domain)
+			}
+		}
+
+		// Build the tree node
+		node := &models.DomainTreeNode{
+			Domain:     rootDomainObj,
+			RootDomain: rootDomain,
+			Subdomains: buildSubdomainTree(subdomains, rootDomain),
+			Count:      len(domains),
+		}
+
+		treeNodes = append(treeNodes, node)
+	}
+
+	return treeNodes, nil
+}
+
+// buildSubdomainTree recursively builds subdomain tree nodes
+func buildSubdomainTree(domains []*models.Domain, parent string) []*models.DomainTreeNode {
+	var nodes []*models.DomainTreeNode
+
+	for _, domain := range domains {
+		// Check if this domain is a direct subdomain of parent
+		if isDirectSubdomain(domain.DomainName, parent) {
+			node := &models.DomainTreeNode{
+				Domain:     domain,
+				RootDomain: parent,
+				Subdomains: []*models.DomainTreeNode{},
+				Count:      1,
+			}
+
+			// Find subdomains of this domain
+			var childDomains []*models.Domain
+			for _, d := range domains {
+				if d.DomainName != domain.DomainName && isSubdomainOf(d.DomainName, domain.DomainName) {
+					childDomains = append(childDomains, d)
+				}
+			}
+
+			if len(childDomains) > 0 {
+				node.Subdomains = buildSubdomainTree(childDomains, domain.DomainName)
+				node.Count += len(childDomains)
+			}
+
+			nodes = append(nodes, node)
+		}
+	}
+
+	return nodes
+}
+
+// isDirectSubdomain checks if domain is a direct subdomain of parent
+// e.g., api.example.com is direct subdomain of example.com
+// but sub.api.example.com is NOT a direct subdomain of example.com
+func isDirectSubdomain(domain, parent string) bool {
+	if len(domain) <= len(parent) {
+		return false
+	}
+
+	// Check if domain ends with parent
+	if domain[len(domain)-len(parent):] != parent {
+		return false
+	}
+
+	// Get the prefix part
+	prefix := domain[:len(domain)-len(parent)]
+
+	// Remove trailing dot
+	if len(prefix) > 0 && prefix[len(prefix)-1] == '.' {
+		prefix = prefix[:len(prefix)-1]
+	}
+
+	// Check that prefix doesn't contain dots (only one level)
+	for i := 0; i < len(prefix); i++ {
+		if prefix[i] == '.' {
+			return false
+		}
+	}
+
+	return len(prefix) > 0
+}
+
+// isSubdomainOf checks if domain is a subdomain of parent (direct or nested)
+func isSubdomainOf(domain, parent string) bool {
+	if len(domain) <= len(parent) {
+		return false
+	}
+
+	// Check if domain ends with parent
+	if domain[len(domain)-len(parent):] != parent {
+		return false
+	}
+
+	// Check if the character before parent is a dot
+	if len(domain) > len(parent) && domain[len(domain)-len(parent)-1] == '.' {
+		return true
+	}
+
+	return false
 }

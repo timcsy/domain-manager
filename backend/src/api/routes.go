@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/domain-manager/backend/src/middleware"
 	"github.com/go-chi/chi/v5"
@@ -24,7 +25,7 @@ func NewRouter() *chi.Mux {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Session-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -47,22 +48,27 @@ func NewRouter() *chi.Mux {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.Auth)
 
-			// Domains
-			r.Route("/domains", func(r chi.Router) {
-				r.Get("/", HandleListDomains)
-				r.Post("/", HandleCreateDomain)
-				r.Get("/{id}", HandleGetDomain)
-				r.Put("/{id}", HandleUpdateDomain)
-				r.Delete("/{id}", HandleDeleteDomain)
-				r.Get("/{id}/status", HandleGetDomainStatus)
-			})
+			// Domains - literal routes must come before parameter routes
+			r.Get("/domains", HandleListDomains)
+			r.Post("/domains", HandleCreateDomain)
+			r.Get("/domains/tree", HandleGetDomainTree)
+			r.Post("/domains/batch", HandleBatchCreateDomains)
+		r.Delete("/domains/batch", HandleBatchDeleteDomains)
+		r.Patch("/domains/batch", HandleBatchUpdateDomains)
+			r.Get("/domains/{id}", HandleGetDomain)
+			r.Put("/domains/{id}", HandleUpdateDomain)
+			r.Delete("/domains/{id}", HandleDeleteDomain)
+			r.Get("/domains/{id}/status", HandleGetDomainStatus)
+			r.Get("/domains/{id}/diagnostics", HandleGetDomainDiagnostics)
 
 			// Certificates
 			r.Route("/certificates", func(r chi.Router) {
 				r.Get("/", HandleListCertificates)
 				r.Post("/", HandleUploadCertificate)
+				r.Get("/expiring", HandleGetExpiringCertificates)
 				r.Get("/{id}", HandleGetCertificate)
 				r.Delete("/{id}", HandleDeleteCertificate)
+				r.Post("/{id}/renew", HandleRenewCertificate)
 			})
 
 			// Services (Kubernetes)
@@ -96,7 +102,10 @@ func NewRouter() *chi.Mux {
 	r.Post("/mcp", HandleMCP)
 
 	// Serve frontend static files
-	frontendDir := "../frontend"
+	frontendDir := os.Getenv("FRONTEND_PATH")
+	if frontendDir == "" {
+		frontendDir = "../frontend" // default for local development
+	}
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, frontendDir+"/src/pages/login.html")
 	})

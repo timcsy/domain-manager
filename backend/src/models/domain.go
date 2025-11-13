@@ -34,6 +34,7 @@ type DomainUpdateRequest struct {
 	TargetNamespace *string `json:"target_namespace,omitempty"`
 	TargetPort      *int    `json:"target_port,omitempty"`
 	SSLMode         *string `json:"ssl_mode,omitempty"`
+	Status          *string `json:"status,omitempty"`
 	Enabled         *bool   `json:"enabled,omitempty"`
 }
 
@@ -65,4 +66,12 @@ func (r *DomainCreateRequest) Validate() error {
 		r.SSLMode = "auto"
 	}
 	return nil
+}
+
+// DomainTreeNode represents a node in the domain tree structure
+type DomainTreeNode struct {
+	Domain      *Domain            `json:"domain"`
+	RootDomain  string             `json:"root_domain"`
+	Subdomains  []*DomainTreeNode  `json:"subdomains,omitempty"`
+	Count       int                `json:"count"` // Total count including nested subdomains
 }

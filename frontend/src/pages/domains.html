@@ -26,15 +26,30 @@
 <body class="bg-gray-50">
     <div x-data="{
         showModal: false,
+        showBatchModal: false,
+        batchResult: null,
+        viewMode: 'list',
         formData: {
             domain_name: '',
             target_service: '',
             target_namespace: 'default',
             target_port: 80,
-            ssl_enabled: true
+            ssl_mode: 'auto'
+        },
+        batchFormData: {
+            batchText: '',
+            target_namespace: 'default',
+            target_port: 80,
+            ssl_mode: 'auto'
         },
         domains: [],
+        domainTree: [],
+        expandedNodes: {},
+        namespaces: [],
+        services: [],
+        loadingServices: false,
         loading: true,
+        selectedDomains: [],
         filter: {
             status: '',
             search: ''
@@ -59,13 +74,87 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    this.domains = data.data || [];
-                    this.pagination.total = data.pagination?.total || 0;
+                    // 過濾掉已刪除的域名
+                    this.domains = (data.data || []).filter(d => d.status !== 'deleted');
+                    // 更新 total 以反映過濾後的實際數量
+                    this.pagination.total = this.domains.length;
                 }
             } catch (err) {
                 console.error('Failed to load domains:', err);
             } finally {
                 this.loading = false;
+            }
+        },
+        filterDeletedFromTree(nodes) {
+            if (!nodes || !Array.isArray(nodes)) return [];
+
+            return nodes.map(node => {
+                // 過濾子節點
+                const filteredSubdomains = this.filterDeletedFromTree(node.subdomains);
+
+                // 如果這個節點的 domain 是 deleted，跳過它
+                if (node.domain && node.domain.status === 'deleted') {
+                    return null;
+                }
+
+                // 重新計算 count：包含自己（如果有 domain）+ 所有子域名
+                let count = 0;
+                if (node.domain) count = 1;  // 自己
+
+                // 遞歸計算所有子域名的數量
+                const countSubdomains = (subdomains) => {
+                    let total = 0;
+                    if (subdomains && Array.isArray(subdomains)) {
+                        subdomains.forEach(sub => {
+                            if (sub.domain) total += 1;
+                            total += countSubdomains(sub.subdomains);
+                        });
+                    }
+                    return total;
+                };
+
+                count += countSubdomains(filteredSubdomains);
+
+                // 如果 count 為 0，表示這個節點下沒有任何活躍域名，跳過它
+                if (count === 0) {
+                    return null;
+                }
+
+                return {
+                    ...node,
+                    subdomains: filteredSubdomains,
+                    count: count
+                };
+            }).filter(node => node !== null);
+        },
+        async loadDomainTree() {
+            this.loading = true;
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/domains/tree', {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    // 過濾掉已刪除的域名
+                    this.domainTree = this.filterDeletedFromTree(data.data?.tree || []);
+                }
+            } catch (err) {
+                console.error('Failed to load domain tree:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+        toggleNode(domain) {
+            const key = domain ? domain.domain_name : 'root';
+            this.expandedNodes[key] = !this.expandedNodes[key];
+        },
+        switchView(mode) {
+            this.viewMode = mode;
+            if (mode === 'tree') {
+                this.loadDomainTree();
+            } else {
+                this.loadDomains();
             }
         },
         async createDomain() {
@@ -82,8 +171,12 @@
                 const data = await response.json();
                 if (data.success) {
                     this.showModal = false;
-                    this.formData = { domain_name: '', target_service: '', target_namespace: 'default', target_port: 80, ssl_enabled: true };
-                    await this.loadDomains();
+                    this.formData = { domain_name: '', target_service: '', target_namespace: 'default', target_port: 80, ssl_mode: 'auto' };
+                    if (this.viewMode === 'tree') {
+                        await this.loadDomainTree();
+                    } else {
+                        await this.loadDomains();
+                    }
                     alert('域名建立成功！');
                 } else {
                     alert('域名建立失敗: ' + data.message);
@@ -109,6 +202,241 @@
                 console.error('Failed to delete domain:', err);
                 alert('刪除域名失敗');
             }
+        },
+        toggleSelectDomain(domainId) {
+            const index = this.selectedDomains.indexOf(domainId);
+            if (index > -1) {
+                this.selectedDomains.splice(index, 1);
+            } else {
+                this.selectedDomains.push(domainId);
+            }
+        },
+        toggleSelectAll() {
+            if (this.selectedDomains.length === this.filteredDomains.length) {
+                this.selectedDomains = [];
+            } else {
+                this.selectedDomains = this.filteredDomains.map(d => d.id);
+            }
+        },
+        get allSelected() {
+            return this.filteredDomains.length > 0 &&
+                   this.selectedDomains.length === this.filteredDomains.length;
+        },
+        get someSelected() {
+            return this.selectedDomains.length > 0 &&
+                   this.selectedDomains.length < this.filteredDomains.length;
+        },
+        async batchDeleteDomains() {
+            if (this.selectedDomains.length === 0) {
+                alert('請先選擇要刪除的域名');
+                return;
+            }
+            if (!confirm(`確定要刪除 ${this.selectedDomains.length} 個域名嗎？`)) return;
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/domains/batch', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify({
+                        ids: this.selectedDomains,
+                        hard: true
+                    })
+                });
+
+                const data = await response.json();
+
+                this.selectedDomains = [];
+                if (this.viewMode === 'tree') {
+                    await this.loadDomainTree();
+                } else {
+                    await this.loadDomains();
+                }
+
+                if (data.success) {
+                    const { total, success, failed, errors } = data.data;
+                    if (failed === 0) {
+                        alert(`成功刪除 ${success} 個域名`);
+                    } else {
+                        const errorMsg = Object.entries(errors || {})
+                            .map(([id, err]) => `域名 ID ${id}: ${err}`)
+                            .join('\n');
+                        alert(`刪除完成：成功 ${success} 個，失敗 ${failed} 個\n\n失敗原因：\n${errorMsg}`);
+                    }
+                } else {
+                    alert('批次刪除失敗: ' + data.message);
+                }
+            } catch (err) {
+                console.error('Failed to batch delete domains:', err);
+                alert('批次刪除失敗');
+            }
+        },
+        async batchUpdateStatus(newStatus) {
+            if (this.selectedDomains.length === 0) {
+                alert('請先選擇要更新的域名');
+                return;
+            }
+
+            const statusText = newStatus === 'active' ? '啟用' : '停用';
+            if (!confirm(`確定要${statusText} ${this.selectedDomains.length} 個域名嗎？`)) return;
+
+            try {
+                const token = localStorage.getItem('token');
+                const updates = this.selectedDomains.map(id => ({
+                    id: id,
+                    update: { status: newStatus }
+                }));
+
+                const response = await fetch('/api/v1/domains/batch', {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify({ updates })
+                });
+
+                const data = await response.json();
+
+                this.selectedDomains = [];
+                if (this.viewMode === 'tree') {
+                    await this.loadDomainTree();
+                } else {
+                    await this.loadDomains();
+                }
+
+                if (data.success) {
+                    const { total, success, failed, errors } = data.data;
+                    if (failed === 0) {
+                        alert(`成功${statusText} ${success} 個域名`);
+                    } else {
+                        const errorMsg = Object.entries(errors || {})
+                            .map(([id, err]) => `域名 ID ${id}: ${err}`)
+                            .join('\n');
+                        alert(`${statusText}完成：成功 ${success} 個，失敗 ${failed} 個\n\n失敗原因：\n${errorMsg}`);
+                    }
+                } else {
+                    alert(`批次${statusText}失敗: ` + data.message);
+                }
+            } catch (err) {
+                console.error('Failed to batch update domains:', err);
+                alert(`批次${statusText}失敗`);
+            }
+        },
+        async loadNamespaces() {
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/services?all_namespaces=true', {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success && data.data.namespaces) {
+                    this.namespaces = data.data.namespaces;
+                }
+            } catch (err) {
+                console.error('Failed to load namespaces:', err);
+            }
+        },
+        async loadServices(namespace) {
+            this.loadingServices = true;
+            this.services = [];
+            this.formData.target_service = '';
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/v1/services?namespace=${namespace || 'default'}`, {
+                    headers: { 'X-Session-Token': token }
+                });
+                const data = await response.json();
+                if (data.success && data.data.services) {
+                    this.services = data.data.services;
+                }
+            } catch (err) {
+                console.error('Failed to load services:', err);
+            } finally {
+                this.loadingServices = false;
+            }
+        },
+        onServiceChange() {
+            const selectedService = this.services.find(s => s.name === this.formData.target_service);
+            if (selectedService && selectedService.ports && selectedService.ports.length > 0) {
+                this.formData.target_port = selectedService.ports[0].port;
+            }
+        },
+        openModal() {
+            this.showModal = true;
+            this.loadNamespaces();
+            this.loadServices(this.formData.target_namespace);
+        },
+        openBatchModal() {
+            this.showBatchModal = true;
+            this.batchResult = null;
+            this.batchFormData = {
+                batchText: '',
+                target_namespace: 'default',
+                target_port: 80,
+                ssl_mode: 'auto'
+            };
+        },
+        async batchCreateDomains() {
+            const lines = this.batchFormData.batchText.split('\n').filter(line => line.trim());
+            if (lines.length === 0) {
+                alert('請輸入至少一個域名');
+                return;
+            }
+
+            // Parse domains from text (format: domain_name,service_name or just domain_name)
+            const domains = lines.map(line => {
+                const parts = line.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    return {
+                        domain_name: parts[0],
+                        target_service: parts[1],
+                        target_namespace: this.batchFormData.target_namespace,
+                        target_port: this.batchFormData.target_port,
+                        ssl_mode: this.batchFormData.ssl_mode
+                    };
+                } else {
+                    return {
+                        domain_name: parts[0],
+                        target_service: 'default',
+                        target_namespace: this.batchFormData.target_namespace,
+                        target_port: this.batchFormData.target_port,
+                        ssl_mode: this.batchFormData.ssl_mode
+                    };
+                }
+            });
+
+            try {
+                const token = localStorage.getItem('token');
+                const response = await fetch('/api/v1/domains/batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': token
+                    },
+                    body: JSON.stringify({ domains })
+                });
+                const data = await response.json();
+
+                this.batchResult = data.data;
+
+                // Refresh the view
+                if (this.viewMode === 'tree') {
+                    await this.loadDomainTree();
+                } else {
+                    await this.loadDomains();
+                }
+            } catch (err) {
+                console.error('Failed to batch create domains:', err);
+                alert('批次建立域名失敗');
+            }
+        },
+        closeBatchModal() {
+            this.showBatchModal = false;
+            this.batchResult = null;
         },
         get filteredDomains() {
             if (!this.filter.search) return this.domains;
@@ -141,13 +469,60 @@
         <div class="container mx-auto p-6">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-bold">域名管理</h1>
-                <button @click="showModal = true" class="btn-primary">
-                    + 新增域名
+                <div class="flex gap-2">
+                    <button @click="openModal()" class="btn-primary">
+                        + 新增域名
+                    </button>
+                    <button @click="openBatchModal()" class="btn-secondary">
+                        批次建立
+                    </button>
+                </div>
+            </div>
+
+            <!-- View Mode Toggle -->
+            <div class="flex gap-2 mb-4">
+                <button @click="switchView('list')"
+                        :class="viewMode === 'list' ? 'btn-primary' : 'btn-secondary'"
+                        class="px-4 py-2 rounded">
+                    列表檢視
+                </button>
+                <button @click="switchView('tree')"
+                        :class="viewMode === 'tree' ? 'btn-primary' : 'btn-secondary'"
+                        class="px-4 py-2 rounded">
+                    樹狀檢視
                 </button>
             </div>
 
+            <!-- Batch Actions Bar -->
+            <div class="card mb-4 bg-blue-50 border-blue-200" x-show="viewMode === 'list' && selectedDomains.length > 0">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <span class="text-sm font-medium text-blue-900">
+                            已選擇 <span x-text="selectedDomains.length"></span> 個域名
+                        </span>
+                        <button @click="selectedDomains = []" class="text-sm text-blue-600 hover:text-blue-800">
+                            清除選擇
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="batchUpdateStatus('active')"
+                                class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm">
+                            啟用
+                        </button>
+                        <button @click="batchUpdateStatus('pending')"
+                                class="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm">
+                            停用
+                        </button>
+                        <button @click="batchDeleteDomains()"
+                                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm">
+                            批次刪除
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Filters -->
-            <div class="card mb-4">
+            <div class="card mb-4" x-show="viewMode === 'list'">
                 <div class="flex gap-4">
                     <div class="flex-1">
                         <input type="text"
@@ -167,11 +542,18 @@
             </div>
 
             <!-- Domain List -->
-            <div class="card">
+            <div class="card" x-show="viewMode === 'list'">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
+                                <th class="px-3 py-3 text-left">
+                                    <input type="checkbox"
+                                           @change="toggleSelectAll()"
+                                           :checked="allSelected"
+                                           :indeterminate.prop="someSelected"
+                                           class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                </th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">域名</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">目標服務</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">狀態</th>
@@ -183,16 +565,22 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                             <template x-if="loading">
                                 <tr>
-                                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">載入中...</td>
+                                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">載入中...</td>
                                 </tr>
                             </template>
                             <template x-if="!loading && filteredDomains.length === 0">
                                 <tr>
-                                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">尚無域名資料</td>
+                                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">尚無域名資料</td>
                                 </tr>
                             </template>
                             <template x-for="domain in filteredDomains" :key="domain.id">
                                 <tr class="hover:bg-gray-50">
+                                    <td class="px-3 py-4 whitespace-nowrap">
+                                        <input type="checkbox"
+                                               @change="toggleSelectDomain(domain.id)"
+                                               :checked="selectedDomains.includes(domain.id)"
+                                               class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                         <a :href="`/domain-detail?id=${domain.id}`" class="text-blue-600 hover:text-blue-800" x-text="domain.domain_name"></a>
                                     </td>
@@ -246,6 +634,119 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Domain Tree View -->
+            <div class="card" x-show="viewMode === 'tree'">
+                <template x-if="loading">
+                    <div class="p-6 text-center text-gray-500">載入中...</div>
+                </template>
+                <template x-if="!loading && domainTree.length === 0">
+                    <div class="p-6 text-center text-gray-500">尚無域名資料</div>
+                </template>
+                <template x-if="!loading && domainTree.length > 0">
+                    <div class="p-6">
+                        <template x-for="rootNode in domainTree" :key="rootNode.root_domain">
+                            <div class="mb-4">
+                                <!-- Root Domain -->
+                                <div class="flex items-center py-2 hover:bg-gray-50 rounded pl-2">
+                                    <button @click="toggleNode(rootNode.domain || {domain_name: rootNode.root_domain})"
+                                            class="mr-2 w-6 h-6 flex items-center justify-center text-gray-600 hover:text-gray-900 flex-shrink-0"
+                                            x-show="rootNode.subdomains && rootNode.subdomains.length > 0">
+                                        <span x-show="expandedNodes[rootNode.domain?.domain_name || rootNode.root_domain]">▼</span>
+                                        <span x-show="!expandedNodes[rootNode.domain?.domain_name || rootNode.root_domain]">▶</span>
+                                    </button>
+                                    <div class="w-6 flex-shrink-0" x-show="!(rootNode.subdomains && rootNode.subdomains.length > 0)"></div>
+                                    <div class="flex-1 flex items-center gap-4">
+                                        <template x-if="rootNode.domain">
+                                            <div>
+                                                <a :href="`/domain-detail?id=${rootNode.domain.id}`"
+                                                   class="text-blue-600 hover:text-blue-800 font-medium"
+                                                   x-text="rootNode.domain.domain_name"></a>
+                                                <span class="ml-2 text-sm text-gray-500"
+                                                      x-text="`${rootNode.domain.target_service}.${rootNode.domain.target_namespace}:${rootNode.domain.target_port}`"></span>
+                                                <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                      :class="{
+                                                          'bg-green-100 text-green-800': rootNode.domain.status === 'active',
+                                                          'bg-yellow-100 text-yellow-800': rootNode.domain.status === 'pending',
+                                                          'bg-red-100 text-red-800': rootNode.domain.status === 'error'
+                                                      }"
+                                                      x-text="rootNode.domain.status"></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="!rootNode.domain">
+                                            <div>
+                                                <span class="font-medium text-gray-900" x-text="rootNode.root_domain"></span>
+                                                <span class="ml-2 text-sm text-gray-500">(無根域名)</span>
+                                            </div>
+                                        </template>
+                                        <span class="text-xs text-gray-400" x-text="`(${rootNode.count} 筆)`"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Subdomains (Recursive) -->
+                                <div x-show="expandedNodes[rootNode.domain?.domain_name || rootNode.root_domain]">
+                                    <template x-for="subNode in rootNode.subdomains" :key="subNode.domain.id">
+                                        <div class="my-1">
+                                            <div class="flex items-center py-2 hover:bg-gray-50 rounded" style="padding-left: 3rem;">
+                                                <button @click="toggleNode(subNode.domain)"
+                                                        class="mr-2 w-5 h-5 flex items-center justify-center text-gray-600 hover:text-gray-900 flex-shrink-0 border border-gray-300 rounded"
+                                                        x-show="subNode.subdomains && subNode.subdomains.length > 0">
+                                                    <span x-show="expandedNodes[subNode.domain.domain_name]">▼</span>
+                                                    <span x-show="!expandedNodes[subNode.domain.domain_name]">▶</span>
+                                                </button>
+                                                <div class="w-5 mr-2 flex-shrink-0" x-show="!(subNode.subdomains && subNode.subdomains.length > 0)"></div>
+                                                <div class="flex-1 flex items-center gap-4">
+                                                    <div>
+                                                        <a :href="`/domain-detail?id=${subNode.domain.id}`"
+                                                           class="text-blue-600 hover:text-blue-800"
+                                                           x-text="subNode.domain.domain_name"></a>
+                                                        <span class="ml-2 text-sm text-gray-500"
+                                                              x-text="`${subNode.domain.target_service}.${subNode.domain.target_namespace}:${subNode.domain.target_port}`"></span>
+                                                        <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                              :class="{
+                                                                  'bg-green-100 text-green-800': subNode.domain.status === 'active',
+                                                                  'bg-yellow-100 text-yellow-800': subNode.domain.status === 'pending',
+                                                                  'bg-red-100 text-red-800': subNode.domain.status === 'error'
+                                                              }"
+                                                              x-text="subNode.domain.status"></span>
+                                                    </div>
+                                                    <span class="text-xs text-gray-400" x-show="subNode.count > 1" x-text="`(${subNode.count} 筆)`"></span>
+                                                </div>
+                                            </div>
+                                            <!-- Nested Subdomains (one more level) -->
+                                            <div x-show="expandedNodes[subNode.domain.domain_name]">
+                                                <template x-for="nestedNode in subNode.subdomains" :key="nestedNode.domain.id">
+                                                    <div class="my-1">
+                                                        <div class="flex items-center py-2 hover:bg-gray-50 rounded" style="padding-left: 6rem;">
+                                                            <div class="w-5 mr-2 flex-shrink-0"></div>
+                                                            <div class="flex-1 flex items-center gap-4">
+                                                                <div>
+                                                                    <a :href="`/domain-detail?id=${nestedNode.domain.id}`"
+                                                                       class="text-blue-600 hover:text-blue-800 text-sm"
+                                                                       x-text="nestedNode.domain.domain_name"></a>
+                                                                    <span class="ml-2 text-sm text-gray-500"
+                                                                          x-text="`${nestedNode.domain.target_service}.${nestedNode.domain.target_namespace}:${nestedNode.domain.target_port}`"></span>
+                                                                    <span class="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                                                          :class="{
+                                                                              'bg-green-100 text-green-800': nestedNode.domain.status === 'active',
+                                                                              'bg-yellow-100 text-yellow-800': nestedNode.domain.status === 'pending',
+                                                                              'bg-red-100 text-red-800': nestedNode.domain.status === 'error'
+                                                                          }"
+                                                                          x-text="nestedNode.domain.status"></span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <!-- Add Domain Modal -->
@@ -259,20 +760,35 @@
                             <input type="text" x-model="formData.domain_name" required class="input" placeholder="example.com">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium mb-1">目標服務</label>
-                            <input type="text" x-model="formData.target_service" required class="input" placeholder="my-service">
+                            <label class="block text-sm font-medium mb-1">命名空間</label>
+                            <select x-model="formData.target_namespace" @change="loadServices(formData.target_namespace)" required class="input">
+                                <option value="">選擇命名空間...</option>
+                                <template x-for="ns in namespaces" :key="ns">
+                                    <option :value="ns" x-text="ns"></option>
+                                </template>
+                            </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium mb-1">命名空間</label>
-                            <input type="text" x-model="formData.target_namespace" class="input">
+                            <label class="block text-sm font-medium mb-1">目標服務</label>
+                            <select x-model="formData.target_service" @change="onServiceChange()" required class="input" :disabled="loadingServices || services.length === 0">
+                                <option value="">選擇服務...</option>
+                                <template x-for="service in services" :key="service.name">
+                                    <option :value="service.name" x-text="`${service.name} (${service.type})`"></option>
+                                </template>
+                            </select>
+                            <p x-show="loadingServices" class="text-sm text-gray-500 mt-1">載入服務中...</p>
+                            <p x-show="!loadingServices && services.length === 0" class="text-sm text-gray-500 mt-1">此命名空間無可用服務</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-1">埠號</label>
                             <input type="number" x-model="formData.target_port" required class="input">
                         </div>
-                        <div class="flex items-center">
-                            <input type="checkbox" x-model="formData.ssl_enabled" id="ssl_enabled" class="mr-2">
-                            <label for="ssl_enabled" class="text-sm font-medium">啟用 SSL</label>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">SSL 模式</label>
+                            <select x-model="formData.ssl_mode" class="input">
+                                <option value="auto">自動 (Let's Encrypt)</option>
+                                <option value="manual">手動</option>
+                            </select>
                         </div>
                     </div>
                     <div class="mt-6 flex space-x-3">
@@ -280,6 +796,97 @@
                         <button type="button" @click="showModal = false" class="btn-secondary flex-1">取消</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Batch Create Modal -->
+        <div x-show="showBatchModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+            <div @click.away="closeBatchModal()" class="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <h3 class="text-lg font-semibold mb-4">批次建立域名</h3>
+
+                <!-- Show form if no result yet -->
+                <form x-show="!batchResult" @submit.prevent="batchCreateDomains()">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">域名列表</label>
+                            <textarea x-model="batchFormData.batchText"
+                                      required
+                                      class="input w-full h-48 font-mono text-sm"
+                                      placeholder="每行一個域名，格式：
+domain1.example.com,service-name
+domain2.example.com,service-name
+subdomain.example.com
+
+或僅域名（將使用預設服務）:
+domain3.example.com
+domain4.example.com"></textarea>
+                            <p class="text-xs text-gray-500 mt-1">
+                                每行一個域名，可選格式：domain.com,service-name 或僅 domain.com
+                            </p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1">預設命名空間</label>
+                                <input type="text" x-model="batchFormData.target_namespace" required class="input">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">預設埠號</label>
+                                <input type="number" x-model="batchFormData.target_port" required class="input">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1">SSL 模式</label>
+                                <select x-model="batchFormData.ssl_mode" class="input">
+                                    <option value="auto">自動</option>
+                                    <option value="manual">手動</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex space-x-3">
+                        <button type="submit" class="btn-primary flex-1">批次建立</button>
+                        <button type="button" @click="closeBatchModal()" class="btn-secondary flex-1">取消</button>
+                    </div>
+                </form>
+
+                <!-- Show results after submission -->
+                <div x-show="batchResult">
+                    <div class="mb-4">
+                        <div class="flex items-center gap-4 text-sm">
+                            <span class="font-medium">總計: <span x-text="batchResult?.total || 0"></span></span>
+                            <span class="text-green-600 font-medium">成功: <span x-text="batchResult?.success || 0"></span></span>
+                            <span class="text-red-600 font-medium">失敗: <span x-text="batchResult?.failed || 0"></span></span>
+                        </div>
+                    </div>
+
+                    <!-- Success List -->
+                    <div x-show="batchResult?.success_domains && batchResult.success_domains.length > 0" class="mb-4">
+                        <h4 class="text-sm font-semibold text-green-700 mb-2">成功建立的域名：</h4>
+                        <div class="bg-green-50 rounded p-3 max-h-48 overflow-y-auto">
+                            <template x-for="domain in batchResult?.success_domains" :key="domain.id">
+                                <div class="text-sm text-gray-700 py-1">
+                                    ✓ <span x-text="domain.domain_name"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Error List -->
+                    <div x-show="batchResult?.errors && batchResult.errors.length > 0" class="mb-4">
+                        <h4 class="text-sm font-semibold text-red-700 mb-2">失敗的域名：</h4>
+                        <div class="bg-red-50 rounded p-3 max-h-48 overflow-y-auto">
+                            <template x-for="(error, index) in batchResult?.errors" :key="index">
+                                <div class="text-sm text-red-700 py-1">
+                                    ✗ <span x-text="error.domain_name || error.DomainName"></span>:
+                                    <span x-text="error.error || error.Error"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="mt-6">
+                        <button @click="closeBatchModal()" class="btn-primary w-full">關閉</button>
+                    </div>
+                </div>
             </div>
         </div>
         </div>
