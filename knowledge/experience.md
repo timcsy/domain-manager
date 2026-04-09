@@ -41,3 +41,19 @@
 - **解決方式**：`SaveToken` 同時寫入兩處，`RemoveToken` 同時清除兩處
 - **教訓**：當資料需要被多個系統消費時，考慮每個消費者的存取方式，可能需要同步到不同儲存層
 - **來源**：commit 0dcdff7, backend/src/services/cloudflare_service.go
+
+### Alpine.js inline x-data 不支援 async method shorthand
+
+- **理論說**：JavaScript object literal 支援 `async foo() {}` method shorthand，所以 Alpine.js 的 `x-data` 也應該支援
+- **實際發生**：Alpine.js 3.x 用 `new Function()` 解析 inline x-data，不支援 async shorthand 語法。頁面完全壞掉，所有變數都 undefined
+- **解決方式**：改用 `foo: async function() {}` function expression 語法
+- **教訓**：框架的模板語法不等於原生 JavaScript。在框架的 eval 環境中，語法支援可能有限制，遇到 parse error 優先懷疑語法相容性
+- **來源**：commit 025c4e7, frontend/src/pages/settings.html
+
+### 用功能性端點驗證第三方 API token 更穩健
+
+- **理論說**：Cloudflare 提供 `/user/tokens/verify` 端點驗證 API Token
+- **實際發生**：Cloudflare 新版 `cfat_` 格式的 token（從 Edit zone DNS template 建立）在 `/user/tokens/verify` 回傳 401 Invalid。舊版文件的驗證方式不適用於新格式
+- **解決方式**：改用 `/zones?per_page=1` 驗證——直接呼叫 token 實際需要的功能端點，同時確認權限正確
+- **教訓**：驗證第三方 API token 時，優先用功能性端點（實際會用到的 API）而非專用驗證端點。格式可能變化，但功能端點的行為更穩定
+- **來源**：commit 8ec0fec, backend/src/services/cloudflare_service.go
