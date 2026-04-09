@@ -22,11 +22,16 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 - 診斷工具、排程器
 - Helm chart 與 Kustomize 部署
 - CI/CD 與容器化
+- API Key 認證機制
+- MCP Server（JSON-RPC 2.0，12 個 Tools + 4 個 Resources）
+- 資料庫備份與還原
+- 速率限制與請求追蹤
+- 系統設定管理介面、API 文件頁面
+- 完整文件（quickstart、troubleshooting、architecture）
 
 待完成：
-- [ ] 階段 6：程式化 API / MCP 操作
-- [ ] 階段 7：收尾與跨功能
 - [ ] Cloudflare API 整合（DNS-01 challenge for wildcard 憑證）
+- [ ] 端對端驗證（需在實際 K8s 叢集執行）
 
 ## 架構
 
@@ -51,26 +56,26 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 
 ### 階段 6：程式化 API / MCP 操作
 
-- [ ] 完成
+- [x] 完成
 
 **成功標準：**
-- [ ] API Key 管理機制
-- [ ] 備份功能
-- [ ] MCP Server 實作
-- [ ] API 文件與測試
-- [ ] Helm 與前端增強
-- [ ] 整合功能
+- [x] API Key 管理機制
+- [x] 備份功能
+- [x] MCP Server 實作
+- [x] API 文件與測試
+- [x] Helm 與前端增強
+- [x] 整合功能
 
 ### 階段 7：收尾與跨功能
 
-- [ ] 完成
+- [x] 完成
 
 **成功標準：**
-- [ ] README 與 Quickstart 文件
-- [ ] 故障排除指南
-- [ ] 架構文件
-- [ ] 端對端驗證
-- [ ] 程式碼審查與重構
+- [x] README 與 Quickstart 文件
+- [x] 故障排除指南
+- [x] 架構文件
+- [ ] 端對端驗證（需在實際 K8s 叢集執行）
+- [x] 程式碼審查與重構
 
 ### 未來：Cloudflare 整合
 
