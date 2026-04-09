@@ -74,6 +74,41 @@
             </svg>
             <span>系統設定</span>
         </a>
+
+        <div class="px-3 py-2 mt-2 border-t border-gray-100 pt-3">
+            <p class="text-xs text-gray-400 uppercase tracking-wider mb-1">整合狀態</p>
+            <div id="cf-status" class="text-xs text-gray-500"
+                 hx-get="/api/v1/cloudflare/status" hx-trigger="load"
+                 hx-headers='{"X-Session-Token": ""}'
+                 hx-swap="innerHTML">
+                <span class="text-gray-400">載入中...</span>
+            </div>
+            <script>
+                document.addEventListener('htmx:beforeRequest', function(evt) {
+                    if (evt.detail.elt.id === 'cf-status') {
+                        const token = localStorage.getItem('token');
+                        if (token) evt.detail.xhr.setRequestHeader('X-Session-Token', token);
+                    }
+                });
+                document.addEventListener('htmx:afterRequest', function(evt) {
+                    if (evt.detail.elt.id === 'cf-status') {
+                        try {
+                            const data = JSON.parse(evt.detail.xhr.responseText);
+                            const el = document.getElementById('cf-status');
+                            if (data.success && data.data) {
+                                const d = data.data;
+                                const dot = d.enabled ? '<span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>' : '<span class="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1"></span>';
+                                el.innerHTML = dot + 'Cloudflare: ' + (d.enabled ? '已啟用' : '未啟用');
+                            } else {
+                                el.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-gray-300 mr-1"></span>Cloudflare: 未啟用';
+                            }
+                        } catch(e) {
+                            document.getElementById('cf-status').innerHTML = '';
+                        }
+                    }
+                });
+            </script>
+        </div>
     </nav>
 
     <div class="absolute bottom-0 left-0 w-64 p-4 border-t border-gray-200 bg-white">

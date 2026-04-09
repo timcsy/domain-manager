@@ -1,0 +1,28 @@
+# API Contract: Cloudflare 設定
+
+# POST /api/v1/cloudflare/token
+# 設定 Cloudflare API Token（驗證後儲存）
+# Request:
+#   { "api_token": "xxx" }
+# Response (success):
+#   { "success": true, "data": { "status": "active" }, "message": "Token validated and saved" }
+# Response (invalid token):
+#   { "success": false, "error": "Bad Request", "message": "Invalid Cloudflare API token" }
+
+# GET /api/v1/cloudflare/status
+# 取得 Cloudflare 整合狀態
+# Response:
+#   {
+#     "success": true,
+#     "data": {
+#       "enabled": true,
+#       "token_set": true,
+#       "token_valid": true,
+#       "cluster_issuer_ready": true
+#     }
+#   }
+
+# DELETE /api/v1/cloudflare/token
+# 移除 Cloudflare API Token（停用 DNS-01）
+# Response:
+#   { "success": true, "message": "Cloudflare token removed" }

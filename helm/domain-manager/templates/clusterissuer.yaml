@@ -19,6 +19,13 @@ spec:
       name: letsencrypt-prod
     # Enable the HTTP-01 challenge provider
     solvers:
+    {{- if and .Values.cloudflare.enabled .Values.cloudflare.apiToken }}
+    - dns01:
+        cloudflare:
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+    {{- end }}
     - http01:
         ingress:
           class: {{ .Values.ingress.className }}

@@ -82,6 +82,13 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# Cloudflare DNS-01 configuration
+cloudflare:
+  enabled: false
+  # Cloudflare API Token (Zone:DNS:Edit permission)
+  # Leave empty to configure later via Web UI
+  apiToken: ""
+
 # API Key configuration
 apiKeys:
   # Pre-configured API keys (optional)

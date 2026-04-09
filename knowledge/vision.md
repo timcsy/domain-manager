@@ -86,10 +86,15 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 - [x] 支援 Traefik（K3s 預設）和 Nginx Ingress Controller
 - [x] 不同 Ingress Controller 的 annotation 差異自動處理
 
-### 未來：Cloudflare 整合
+### 未來：Cloudflare DNS + cert-manager 整合
 
-- [ ] 完成
+- [x] 完成
+
+**方向**：使用 cert-manager 的 DNS-01 solver 搭配 Cloudflare 免費 DNS API 申請 Let's Encrypt wildcard 憑證。全免費架構（Cloudflare 免費 DNS + Let's Encrypt + cert-manager），不需要公開 80 port 做 HTTP-01 challenge。
 
 **成功標準：**
-- [ ] 透過 Cloudflare API 自動設定 DNS 記錄
-- [ ] 支援 DNS-01 challenge 實現 wildcard 憑證
+- [x] 使用者在 UI 設定 Cloudflare API Token
+- [x] 系統自動建立 K8s Secret 和 ClusterIssuer（DNS-01 + Cloudflare solver）
+- [x] cert-manager 透過 Cloudflare DNS API 完成 DNS-01 challenge
+- [x] 成功申請 wildcard 憑證（`*.example.com`）
+- [x] 憑證自動續期由 cert-manager 處理

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -15,6 +16,9 @@ import (
 
 // Client is the global Kubernetes client
 var Client *kubernetes.Clientset
+
+// DynamicClient is the global Kubernetes dynamic client (for CRDs like cert-manager)
+var DynamicClient dynamic.Interface
 
 // Config holds Kubernetes client configuration
 type Config struct {
@@ -69,6 +73,14 @@ func Initialize(cfg *Config) error {
 	}
 
 	Client = clientset
+
+	// Create dynamic client for CRDs (cert-manager ClusterIssuer etc.)
+	dynClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create dynamic client: %w", err)
+	}
+	DynamicClient = dynClient
+
 	log.Println("Kubernetes client initialized successfully")
 
 	// Test connection

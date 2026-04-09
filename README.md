@@ -16,6 +16,8 @@
 - ✅ 資料庫備份與還原
 - ✅ 速率限制與請求追蹤
 - ✅ 系統設定管理介面
+- ✅ Cloudflare DNS-01 + cert-manager wildcard 憑證
+- ✅ 多 Ingress Controller 支援（Nginx / Traefik）
 
 ## 快速開始
 
@@ -164,7 +166,29 @@ GET    /api/v1/certificates        # 列出憑證
 GET    /api/v1/services            # 列出 K8s 服務
 GET    /api/v1/api-keys            # 列出 API 金鑰
 POST   /api/v1/backup              # 建立備份
+POST   /api/v1/cloudflare/token    # 設定 Cloudflare Token
+GET    /api/v1/cloudflare/status   # Cloudflare 整合狀態
 POST   /mcp                        # MCP JSON-RPC 2.0 端點
+```
+
+## Cloudflare DNS-01 Wildcard 憑證
+
+透過 Cloudflare 免費 DNS + cert-manager DNS-01 solver 自動申請 wildcard 憑證，全免費方案。
+
+### 設定方式
+
+**方式 A：Web UI**
+
+1. 在 [Cloudflare Dashboard](https://dash.cloudflare.com) 建立 API Token（權限：Zone - DNS - Edit）
+2. 進入系統設定頁面，在 Cloudflare 區塊輸入 token
+3. 建立域名時輸入 `*.example.com` 即可申請 wildcard 憑證
+
+**方式 B：Helm 部署時設定**
+
+```bash
+helm install domain-manager ./helm/domain-manager \
+  --set cloudflare.enabled=true \
+  --set cloudflare.apiToken="your-cloudflare-api-token"
 ```
 
 ## 配置

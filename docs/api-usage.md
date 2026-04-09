@@ -74,6 +74,14 @@ curl -H "X-API-Key: dm_your_key_here" http://localhost:8080/api/v1/domains
 | GET | `/api/v1/settings` | 取得系統設定 |
 | PATCH | `/api/v1/settings` | 更新系統設定 |
 
+### Cloudflare DNS-01
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| POST | `/api/v1/cloudflare/token` | 設定 Cloudflare API Token（驗證後儲存） |
+| GET | `/api/v1/cloudflare/status` | 取得 Cloudflare 整合狀態 |
+| DELETE | `/api/v1/cloudflare/token` | 移除 Cloudflare Token（停用 DNS-01） |
+
 ### API 金鑰
 
 | 方法 | 路徑 | 說明 |
@@ -174,4 +182,34 @@ curl -X POST http://localhost:8080/api/v1/api-keys \
 ```bash
 curl -H "X-API-Key: dm_your_key" \
   "http://localhost:8080/api/v1/certificates/expiring?days=30"
+```
+
+### 設定 Cloudflare API Token
+
+```bash
+curl -X POST http://localhost:8080/api/v1/cloudflare/token \
+  -H "X-Session-Token: <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"api_token": "your-cloudflare-api-token"}'
+```
+
+### 查看 Cloudflare 整合狀態
+
+```bash
+curl -H "X-Session-Token: <token>" \
+  http://localhost:8080/api/v1/cloudflare/status
+```
+
+### 建立 Wildcard 域名
+
+```bash
+curl -X POST http://localhost:8080/api/v1/domains \
+  -H "X-Session-Token: <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain_name": "*.example.com",
+    "target_service": "my-app",
+    "target_port": 80,
+    "ssl_mode": "auto"
+  }'
 ```

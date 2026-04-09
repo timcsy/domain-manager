@@ -102,6 +102,13 @@ func NewRouter() *chi.Mux {
 				r.Delete("/{id}", HandleDeleteAPIKey)
 			})
 
+			// Cloudflare
+			r.Route("/cloudflare", func(r chi.Router) {
+				r.Get("/status", HandleGetCloudflareStatus)
+				r.Post("/token", HandleSetCloudflareToken)
+				r.Delete("/token", HandleDeleteCloudflareToken)
+			})
+
 			// Backup
 			r.Route("/backup", func(r chi.Router) {
 				r.Get("/", HandleListBackups)

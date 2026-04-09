@@ -115,7 +115,9 @@ INSERT OR IGNORE INTO system_settings (key, value, description) VALUES
     ('cert_manager_enabled', '1', '是否啟用 cert-manager 整合'),
     ('ingress_annotations', '{}', 'Ingress 預設註解 (JSON)'),
     ('backup_enabled', '1', '是否啟用自動備份'),
-    ('backup_retention_days', '30', '備份保留天數');
+    ('backup_retention_days', '30', '備份保留天數'),
+    ('cloudflare_enabled', '0', '是否啟用 Cloudflare DNS-01 整合'),
+    ('cloudflare_api_token', '', 'Cloudflare API Token');
 
 -- Insert default admin account (password: admin - should be changed on first login)
 -- Password hash for 'admin' using bcrypt cost 10

@@ -757,7 +757,8 @@
                     <div class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium mb-1">域名</label>
-                            <input type="text" x-model="formData.domain_name" required class="input" placeholder="example.com">
+                            <input type="text" x-model="formData.domain_name" required class="input" placeholder="example.com 或 *.example.com">
+                            <p class="text-xs text-gray-500 mt-1">輸入 <code>*.example.com</code> 可申請 wildcard 憑證（需先設定 Cloudflare DNS-01）</p>
                         </div>
                         <div>
                             <label class="block text-sm font-medium mb-1">命名空間</label>
@@ -789,6 +790,7 @@
                                 <option value="auto">自動 (Let's Encrypt)</option>
                                 <option value="manual">手動</option>
                             </select>
+                            <p x-show="formData.domain_name && formData.domain_name.startsWith('*.')" class="text-xs text-blue-600 mt-1">Wildcard 域名將使用 DNS-01 challenge 申請憑證</p>
                         </div>
                     </div>
                     <div class="mt-6 flex space-x-3">

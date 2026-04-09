@@ -39,6 +39,9 @@
                 saving: false,
                 message: null,
                 messageType: 'success',
+                cfToken: '',
+                cfSaving: false,
+                cfStatus: null,
 
                 async loadSettings() {
                     try {
@@ -86,8 +89,68 @@
                     } finally {
                         this.saving = false;
                     }
+                },
+
+                async loadCfStatus() {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/cloudflare/status', {
+                            headers: { 'X-Session-Token': token }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.cfStatus = result.data;
+                        }
+                    } catch (err) {
+                        console.error('Failed to load Cloudflare status:', err);
+                    }
+                },
+
+                async saveCfToken() {
+                    this.cfSaving = true;
+                    this.message = null;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/cloudflare/token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
+                            body: JSON.stringify({ api_token: this.cfToken })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.message = 'Cloudflare token 已驗證並儲存';
+                            this.messageType = 'success';
+                            this.cfToken = '';
+                            await this.loadCfStatus();
+                        } else {
+                            this.message = result.message;
+                            this.messageType = 'error';
+                        }
+                    } catch (err) {
+                        this.message = '儲存失敗：' + err.message;
+                        this.messageType = 'error';
+                    } finally {
+                        this.cfSaving = false;
+                    }
+                },
+
+                async removeCfToken() {
+                    if (!confirm('確定要移除 Cloudflare token 嗎？DNS-01 將停用。')) return;
+                    try {
+                        const token = localStorage.getItem('token');
+                        await fetch('/api/v1/cloudflare/token', {
+                            method: 'DELETE',
+                            headers: { 'X-Session-Token': token }
+                        });
+                        this.message = 'Cloudflare token 已移除';
+                        this.messageType = 'success';
+                        await this.loadCfStatus();
+                    } catch (err) {
+                        this.message = '移除失敗：' + err.message;
+                        this.messageType = 'error';
+                    }
                 }
-            }" x-init="loadSettings()">
+            }" x-init="loadSettings(); loadCfStatus()">
 
                 <!-- Message -->
                 <div x-show="message" class="mb-6 rounded-lg p-4 border"
@@ -191,6 +254,45 @@
                                 <label class="block text-sm font-medium text-gray-700 mb-1">備份保留天數</label>
                                 <input x-model="settings.backup_retention_days" type="number" class="input"
                                        min="1" max="365" placeholder="30">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cloudflare DNS -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">Cloudflare DNS-01 整合</h3>
+                        <p class="text-sm text-gray-500 mb-4">搭配 cert-manager 使用 Cloudflare 免費 DNS API 申請 wildcard 憑證。需要 Cloudflare API Token（權限：Zone - DNS - Edit）。</p>
+
+                        <!-- Status -->
+                        <div x-show="cfStatus" class="mb-4 flex items-center space-x-4">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2.5 h-2.5 rounded-full" :class="cfStatus && cfStatus.enabled ? 'bg-green-500' : 'bg-gray-300'"></div>
+                                <span class="text-sm" x-text="cfStatus && cfStatus.enabled ? '已啟用' : '未啟用'"></span>
+                            </div>
+                            <template x-if="cfStatus && cfStatus.enabled">
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-2.5 h-2.5 rounded-full" :class="cfStatus.cluster_issuer_ready ? 'bg-green-500' : 'bg-yellow-500'"></div>
+                                    <span class="text-sm" x-text="cfStatus.cluster_issuer_ready ? 'ClusterIssuer 就緒' : 'ClusterIssuer 配置中'"></span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div x-show="!cfStatus || !cfStatus.enabled">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Cloudflare API Token</label>
+                                <div class="flex space-x-2">
+                                    <input x-model="cfToken" type="password" class="input" placeholder="輸入 Cloudflare API Token">
+                                    <button @click="saveCfToken()" class="btn-primary whitespace-nowrap" :disabled="cfSaving || !cfToken">
+                                        <span x-show="!cfSaving">驗證並儲存</span>
+                                        <span x-show="cfSaving">驗證中...</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div x-show="cfStatus && cfStatus.enabled">
+                                <div class="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
+                                    <span class="text-green-700 text-sm">Cloudflare DNS-01 已啟用，wildcard 憑證可用</span>
+                                    <button @click="removeCfToken()" class="text-red-600 hover:text-red-800 text-sm font-medium">移除</button>
+                                </div>
                             </div>
                         </div>
                     </div>

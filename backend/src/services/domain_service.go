@@ -70,6 +70,34 @@ func (s *DomainService) getIngressAnnotations(sslEnabled bool, extraAnnotations 
 	return result
 }
 
+// getWildcardSecretName returns the wildcard TLS secret name if the domain can use one.
+// For wildcard domains (*.example.com), returns the secret name.
+// For subdomains (app.example.com), checks if a wildcard domain exists and returns its secret.
+// Returns empty string if no wildcard applies.
+func (s *DomainService) getWildcardSecretName(domainName string) string {
+	parts := strings.Split(domainName, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+
+	// If this IS a wildcard domain
+	if strings.HasPrefix(domainName, "*.") {
+		rootDomain := strings.TrimPrefix(domainName, "*.")
+		return fmt.Sprintf("wildcard-%s-tls", strings.ReplaceAll(rootDomain, ".", "-"))
+	}
+
+	// If this is a subdomain, check if wildcard exists
+	if len(parts) >= 3 {
+		rootDomain := strings.Join(parts[len(parts)-2:], ".")
+		wildcardName := "*." + rootDomain
+		if _, err := s.domainRepo.GetByName(wildcardName); err == nil {
+			return fmt.Sprintf("wildcard-%s-tls", strings.ReplaceAll(rootDomain, ".", "-"))
+		}
+	}
+
+	return ""
+}
+
 // getIngressClass reads the current default ingress class from system settings
 func (s *DomainService) getIngressClass() string {
 	if s.settingsService != nil {
@@ -227,7 +255,13 @@ func (s *DomainService) createIngressForDomain(domain *models.Domain) {
 	var extraAnnotations map[string]string
 	sslEnabled := false
 	if domain.SSLMode == "auto" {
-		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		// Check if this domain can use a wildcard certificate
+		wildcardSecret := s.getWildcardSecretName(domain.DomainName)
+		if wildcardSecret != "" {
+			cfg.TLSSecretName = wildcardSecret
+		} else {
+			cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		}
 		extraAnnotations = map[string]string{
 			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
 		}
@@ -269,7 +303,12 @@ func (s *DomainService) updateIngressForDomain(domain *models.Domain) {
 	var extraAnnotations map[string]string
 	sslEnabled := false
 	if domain.SSLMode == "auto" {
-		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		wildcardSecret := s.getWildcardSecretName(domain.DomainName)
+		if wildcardSecret != "" {
+			cfg.TLSSecretName = wildcardSecret
+		} else {
+			cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
+		}
 		extraAnnotations = map[string]string{
 			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
 		}

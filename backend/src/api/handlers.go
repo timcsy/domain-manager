@@ -28,6 +28,7 @@ var (
 	settingsService    *services.SettingsService
 	apiKeyService      *services.APIKeyService
 	backupService      *services.BackupService
+	cloudflareService  *services.CloudflareService
 	mcpServer          *mcp.Server
 )
 
@@ -66,6 +67,16 @@ func InitializeServices() {
 		dbPath = "./data/database.db"
 	}
 	backupService = services.NewBackupService(dbPath)
+	cloudflareService = services.NewCloudflareService(settingsService)
+
+	// Apply Cloudflare settings from environment (Helm) if set
+	if envCfToken := os.Getenv("CLOUDFLARE_API_TOKEN"); envCfToken != "" {
+		if os.Getenv("CLOUDFLARE_ENABLED") == "true" || os.Getenv("CLOUDFLARE_ENABLED") == "1" {
+			if err := cloudflareService.SaveToken(envCfToken); err != nil {
+				log.Printf("Warning: Failed to set Cloudflare token from environment: %v", err)
+			}
+		}
+	}
 
 	mcpServer = mcp.NewServer(domainService, certificateService, domainRepo, certRepo)
 
@@ -1003,4 +1014,41 @@ func HandleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	Success(w, nil, "Backup deleted successfully")
+}
+
+func HandleSetCloudflareToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		APIToken string `json:"api_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.APIToken == "" {
+		Error(w, http.StatusBadRequest, "api_token is required")
+		return
+	}
+
+	if err := cloudflareService.SaveToken(req.APIToken); err != nil {
+		Error(w, http.StatusBadRequest, fmt.Sprintf("Failed to save Cloudflare token: %v", err))
+		return
+	}
+	Success(w, map[string]string{"status": "active"}, "Token validated and saved")
+}
+
+func HandleGetCloudflareStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := cloudflareService.GetStatus()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get Cloudflare status: %v", err))
+		return
+	}
+	Success(w, status, "")
+}
+
+func HandleDeleteCloudflareToken(w http.ResponseWriter, r *http.Request) {
+	if err := cloudflareService.RemoveToken(); err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to remove Cloudflare token: %v", err))
+		return
+	}
+	Success(w, nil, "Cloudflare token removed")
 }
