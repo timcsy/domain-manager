@@ -47,7 +47,7 @@
                 pwSaving: false,
                 emailSaving: false,
 
-                async loadSettings() {
+                loadSettings: async function() {
                     try {
                         const token = localStorage.getItem('token');
                         const response = await fetch('/api/v1/settings', {
@@ -66,7 +66,7 @@
                     }
                 },
 
-                async saveSettings() {
+                saveSettings: async function() {
                     this.saving = true;
                     this.message = null;
                     try {
@@ -95,7 +95,7 @@
                     }
                 },
 
-                async loadCfStatus() {
+                loadCfStatus: async function() {
                     try {
                         const token = localStorage.getItem('token');
                         const response = await fetch('/api/v1/cloudflare/status', {
@@ -110,7 +110,7 @@
                     }
                 },
 
-                async saveCfToken() {
+                saveCfToken: async function() {
                     this.cfSaving = true;
                     this.message = null;
                     try {
@@ -138,7 +138,7 @@
                     }
                 },
 
-                async removeCfToken() {
+                removeCfToken: async function() {
                     if (!confirm('確定要移除 Cloudflare token 嗎？DNS-01 將停用。')) return;
                     try {
                         const token = localStorage.getItem('token');
@@ -154,7 +154,7 @@
                         this.messageType = 'error';
                     }
                 },
-                async loadProfile() {
+                loadProfile: async function() {
                     try {
                         const token = localStorage.getItem('token');
                         const response = await fetch('/api/v1/admin/profile', {
@@ -169,7 +169,7 @@
                     }
                 },
 
-                async changePassword() {
+                changePassword: async function() {
                     if (this.pwForm.new_password !== this.pwForm.confirm_password) {
                         this.message = '新密碼與確認密碼不一致';
                         this.messageType = 'error';
@@ -200,7 +200,7 @@
                     }
                 },
 
-                async saveEmail() {
+                saveEmail: async function() {
                     this.emailSaving = true;
                     this.message = null;
                     try {
