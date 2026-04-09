@@ -102,6 +102,13 @@ func NewRouter() *chi.Mux {
 				r.Delete("/{id}", HandleDeleteAPIKey)
 			})
 
+			// Admin account management
+			r.Route("/admin", func(r chi.Router) {
+				r.Get("/profile", HandleGetProfile)
+				r.Patch("/password", HandleChangePassword)
+				r.Patch("/email", HandleUpdateEmail)
+			})
+
 			// Cloudflare
 			r.Route("/cloudflare", func(r chi.Router) {
 				r.Get("/status", HandleGetCloudflareStatus)

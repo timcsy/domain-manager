@@ -79,6 +79,48 @@ func (r *AdminAccountRepository) ValidatePassword(account *models.AdminAccount, 
 	return nil
 }
 
+// GetByID retrieves an admin account by ID
+func (r *AdminAccountRepository) GetByID(id int64) (*models.AdminAccount, error) {
+	query := `SELECT id, username, password_hash, email, last_login_at, created_at, updated_at FROM admin_accounts WHERE id = ?`
+	account := &models.AdminAccount{}
+	err := r.db.QueryRow(query, id).Scan(
+		&account.ID,
+		&account.Username,
+		&account.PasswordHash,
+		&account.Email,
+		&account.LastLoginAt,
+		&account.CreatedAt,
+		&account.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, models.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get admin account: %w", err)
+	}
+	return account, nil
+}
+
+// UpdatePassword updates the password hash for an admin account
+func (r *AdminAccountRepository) UpdatePassword(id int64, newPasswordHash string) error {
+	query := `UPDATE admin_accounts SET password_hash = ?, updated_at = ? WHERE id = ?`
+	_, err := r.db.Exec(query, newPasswordHash, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+	return nil
+}
+
+// UpdateEmail updates the email for an admin account
+func (r *AdminAccountRepository) UpdateEmail(id int64, email string) error {
+	query := `UPDATE admin_accounts SET email = ?, updated_at = ? WHERE id = ?`
+	_, err := r.db.Exec(query, email, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update email: %w", err)
+	}
+	return nil
+}
+
 // UpdateLastLogin updates the last login timestamp
 func (r *AdminAccountRepository) UpdateLastLogin(id int64) error {
 	query := `UPDATE admin_accounts SET last_login_at = ? WHERE id = ?`

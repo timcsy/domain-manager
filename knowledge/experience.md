@@ -25,3 +25,19 @@
 - **解決方式**：直接使用既有 schema，只需實作 model、repository、service 層
 - **教訓**：動手前先檢查既有基礎設施。前期規劃可能已經鋪好了路，避免重複工作
 - **來源**：backend/database/migrations/001_init.up.sql
+
+### 操作 CRD 需要 Dynamic Client
+
+- **理論說**：client-go 的 Clientset 可以操作所有 K8s 資源
+- **實際發生**：cert-manager 的 ClusterIssuer 是 CRD，標準 Clientset 無法操作。需要引入 `k8s.io/client-go/dynamic` 搭配 `unstructured.Unstructured` 才能 CRUD CRD 資源
+- **解決方式**：在 `k8s/client.go` 初始化時同時建立 `DynamicClient`，供 `certmanager.go` 使用
+- **教訓**：操作第三方 CRD（cert-manager、Traefik IngressRoute 等）時，必須使用 dynamic client，不能假設 Clientset 就夠用
+- **來源**：commit 0dcdff7, backend/src/k8s/certmanager.go
+
+### 敏感資料需要雙重儲存策略
+
+- **理論說**：Cloudflare API Token 存在系統設定（SQLite）就夠了
+- **實際發生**：cert-manager 需要從 K8s Secret 讀取 token，不會去查應用程式的 SQLite。因此 token 必須同時存在 system_settings（應用層讀取）和 K8s Secret（cert-manager 讀取）
+- **解決方式**：`SaveToken` 同時寫入兩處，`RemoveToken` 同時清除兩處
+- **教訓**：當資料需要被多個系統消費時，考慮每個消費者的存取方式，可能需要同步到不同儲存層
+- **來源**：commit 0dcdff7, backend/src/services/cloudflare_service.go

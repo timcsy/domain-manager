@@ -74,6 +74,14 @@ curl -H "X-API-Key: dm_your_key_here" http://localhost:8080/api/v1/domains
 | GET | `/api/v1/settings` | 取得系統設定 |
 | PATCH | `/api/v1/settings` | 更新系統設定 |
 
+### 管理員帳號
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| GET | `/api/v1/admin/profile` | 取得管理員基本資訊 |
+| PATCH | `/api/v1/admin/password` | 修改密碼（需舊密碼驗證） |
+| PATCH | `/api/v1/admin/email` | 修改 email |
+
 ### Cloudflare DNS-01
 
 | 方法 | 路徑 | 說明 |

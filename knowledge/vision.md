@@ -28,9 +28,10 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 - 速率限制與請求追蹤
 - 系統設定管理介面、API 文件頁面
 - 完整文件（quickstart、troubleshooting、architecture）
+- 多 Ingress Controller 支援（Nginx / Traefik）
+- Cloudflare DNS-01 + cert-manager wildcard 憑證
 
 待完成：
-- [ ] Cloudflare API 整合（DNS-01 challenge for wildcard 憑證）
 - [ ] 端對端驗證（需在實際 K8s 叢集執行）
 
 ## 架構
@@ -98,3 +99,15 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 - [x] cert-manager 透過 Cloudflare DNS API 完成 DNS-01 challenge
 - [x] 成功申請 wildcard 憑證（`*.example.com`）
 - [x] 憑證自動續期由 cert-manager 處理
+
+### 未來：管理員設定整合
+
+- [x] 完成
+
+**備註**：此為實用需求，非從根公理推導。屬於 DevOps 日常管理的便利性改善。
+
+**成功標準：**
+- [x] 管理員可在系統設定頁面修改自己的密碼
+- [x] 管理員可在系統設定頁面修改 email
+- [x] Cloudflare API Token 支援直接更新（不需先移除再重設）
+- [x] 密碼修改需驗證舊密碼

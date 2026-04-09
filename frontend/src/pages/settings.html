@@ -42,6 +42,10 @@
                 cfToken: '',
                 cfSaving: false,
                 cfStatus: null,
+                profile: { username: '', email: '' },
+                pwForm: { old_password: '', new_password: '', confirm_password: '' },
+                pwSaving: false,
+                emailSaving: false,
 
                 async loadSettings() {
                     try {
@@ -150,7 +154,78 @@
                         this.messageType = 'error';
                     }
                 }
-            }" x-init="loadSettings(); loadCfStatus()">
+                async loadProfile() {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/admin/profile', {
+                            headers: { 'X-Session-Token': token }
+                        });
+                        const result = await response.json();
+                        if (result.success && result.data) {
+                            this.profile = result.data;
+                        }
+                    } catch (err) {
+                        console.error('Failed to load profile:', err);
+                    }
+                },
+
+                async changePassword() {
+                    if (this.pwForm.new_password !== this.pwForm.confirm_password) {
+                        this.message = '新密碼與確認密碼不一致';
+                        this.messageType = 'error';
+                        return;
+                    }
+                    this.pwSaving = true;
+                    this.message = null;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/admin/password', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
+                            body: JSON.stringify({ old_password: this.pwForm.old_password, new_password: this.pwForm.new_password })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login';
+                        } else {
+                            this.message = result.message;
+                            this.messageType = 'error';
+                        }
+                    } catch (err) {
+                        this.message = '修改失敗：' + err.message;
+                        this.messageType = 'error';
+                    } finally {
+                        this.pwSaving = false;
+                    }
+                },
+
+                async saveEmail() {
+                    this.emailSaving = true;
+                    this.message = null;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/admin/email', {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
+                            body: JSON.stringify({ email: this.profile.email })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.message = 'Email 已更新';
+                            this.messageType = 'success';
+                        } else {
+                            this.message = result.message;
+                            this.messageType = 'error';
+                        }
+                    } catch (err) {
+                        this.message = '更新失敗：' + err.message;
+                        this.messageType = 'error';
+                    } finally {
+                        this.emailSaving = false;
+                    }
+                }
+            }" x-init="loadSettings(); loadCfStatus(); loadProfile()">
 
                 <!-- Message -->
                 <div x-show="message" class="mb-6 rounded-lg p-4 border"
@@ -171,6 +246,52 @@
                 </div>
 
                 <div x-show="!loading" class="space-y-6">
+                    <!-- Account Management -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-4">帳號管理</h3>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">使用者名稱</label>
+                                    <input type="text" :value="profile.username" class="input bg-gray-100" disabled>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                    <div class="flex space-x-2">
+                                        <input x-model="profile.email" type="email" class="input" placeholder="admin@example.com">
+                                        <button @click="saveEmail()" class="btn-primary whitespace-nowrap" :disabled="emailSaving">
+                                            <span x-show="!emailSaving">儲存</span>
+                                            <span x-show="emailSaving">儲存中...</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t border-gray-200 pt-4">
+                                <h4 class="text-sm font-medium text-gray-700 mb-3">修改密碼</h4>
+                                <div class="space-y-3 max-w-sm">
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">舊密碼</label>
+                                        <input x-model="pwForm.old_password" type="password" class="input" placeholder="輸入目前的密碼">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">新密碼</label>
+                                        <input x-model="pwForm.new_password" type="password" class="input" placeholder="至少 6 個字元">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-500 mb-1">確認新密碼</label>
+                                        <input x-model="pwForm.confirm_password" type="password" class="input" placeholder="再次輸入新密碼">
+                                    </div>
+                                    <button @click="changePassword()" class="btn-danger" :disabled="pwSaving || !pwForm.old_password || !pwForm.new_password || !pwForm.confirm_password">
+                                        <span x-show="!pwSaving">修改密碼</span>
+                                        <span x-show="pwSaving">修改中...</span>
+                                    </button>
+                                    <p class="text-xs text-gray-500">修改密碼後將自動登出，請使用新密碼重新登入</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Let's Encrypt -->
                     <div class="card">
                         <h3 class="text-lg font-semibold mb-4">Let's Encrypt 設定</h3>
@@ -288,10 +409,20 @@
                                     </button>
                                 </div>
                             </div>
-                            <div x-show="cfStatus && cfStatus.enabled">
+                            <div x-show="cfStatus && cfStatus.enabled" class="space-y-3">
                                 <div class="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
                                     <span class="text-green-700 text-sm">Cloudflare DNS-01 已啟用，wildcard 憑證可用</span>
                                     <button @click="removeCfToken()" class="text-red-600 hover:text-red-800 text-sm font-medium">移除</button>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-500 mb-1">更新 Token</label>
+                                    <div class="flex space-x-2">
+                                        <input x-model="cfToken" type="password" class="input" placeholder="輸入新的 Cloudflare API Token">
+                                        <button @click="saveCfToken()" class="btn-secondary whitespace-nowrap" :disabled="cfSaving || !cfToken">
+                                            <span x-show="!cfSaving">更新</span>
+                                            <span x-show="cfSaving">驗證中...</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

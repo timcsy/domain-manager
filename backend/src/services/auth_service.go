@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/domain-manager/backend/src/models"
 	"github.com/domain-manager/backend/src/repositories"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // AuthService handles authentication operations
@@ -93,6 +95,65 @@ func (s *AuthService) ValidateToken(token string) (*Session, error) {
 	}
 
 	return session, nil
+}
+
+// ChangePassword validates old password and updates to new password
+func (s *AuthService) ChangePassword(username, oldPassword, newPassword string) error {
+	if len(newPassword) < 6 {
+		return fmt.Errorf("password must be at least 6 characters")
+	}
+
+	account, err := s.adminRepo.GetByUsername(username)
+	if err != nil {
+		return err
+	}
+
+	if err := s.adminRepo.ValidatePassword(account, oldPassword); err != nil {
+		return fmt.Errorf("old password is incorrect")
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if err := s.adminRepo.UpdatePassword(account.ID, string(hashedPassword)); err != nil {
+		return err
+	}
+
+	// Clear all sessions to force re-login
+	for k := range s.sessions {
+		delete(s.sessions, k)
+	}
+
+	return nil
+}
+
+// UpdateEmail updates admin email
+func (s *AuthService) UpdateEmail(username, email string) error {
+	if email == "" || !strings.Contains(email, "@") {
+		return fmt.Errorf("invalid email format")
+	}
+
+	account, err := s.adminRepo.GetByUsername(username)
+	if err != nil {
+		return err
+	}
+
+	return s.adminRepo.UpdateEmail(account.ID, email)
+}
+
+// GetProfile returns admin profile (username + email)
+func (s *AuthService) GetProfile(username string) (map[string]string, error) {
+	account, err := s.adminRepo.GetByUsername(username)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]string{
+		"username": account.Username,
+		"email":    account.Email,
+	}, nil
 }
 
 // generateToken generates a random session token

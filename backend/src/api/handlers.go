@@ -1052,3 +1052,45 @@ func HandleDeleteCloudflareToken(w http.ResponseWriter, r *http.Request) {
 	}
 	Success(w, nil, "Cloudflare token removed")
 }
+
+func HandleGetProfile(w http.ResponseWriter, r *http.Request) {
+	profile, err := authService.GetProfile("admin")
+	if err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get profile: %v", err))
+		return
+	}
+	Success(w, profile, "")
+}
+
+func HandleChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := authService.ChangePassword("admin", req.OldPassword, req.NewPassword); err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	Success(w, nil, "Password changed. Please login again.")
+}
+
+func HandleUpdateEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := authService.UpdateEmail("admin", req.Email); err != nil {
+		Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	Success(w, map[string]string{"email": req.Email}, "Email updated")
+}
