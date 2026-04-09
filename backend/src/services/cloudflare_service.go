@@ -61,17 +61,22 @@ func (s *CloudflareService) ValidateToken(token string) (bool, error) {
 		return false, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	var result struct {
-		Success bool `json:"success"`
-		Result  struct {
-			Status string `json:"status"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return false, fmt.Errorf("failed to parse response: %w", err)
+	log.Printf("Cloudflare token verify response: status=%d body=%s", resp.StatusCode, string(body))
+
+	if resp.StatusCode == 200 {
+		var result struct {
+			Success bool `json:"success"`
+			Result  struct {
+				Status string `json:"status"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(body, &result); err != nil {
+			return false, fmt.Errorf("failed to parse response: %w", err)
+		}
+		return result.Success && result.Result.Status == "active", nil
 	}
 
-	return result.Success && result.Result.Status == "active", nil
+	return false, fmt.Errorf("Cloudflare API returned status %d", resp.StatusCode)
 }
 
 // SaveToken validates, saves the token, creates K8s Secret, and updates ClusterIssuer
