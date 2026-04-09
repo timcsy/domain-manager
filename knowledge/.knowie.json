@@ -1,0 +1,11 @@
+{
+  "version": "0.3.1",
+  "language": "zh-TW",
+  "createdAt": "2026-04-09T08:32:01.529Z",
+  "tools": [
+    "agents-md",
+    "claude-code",
+    "speckit"
+  ],
+  "updatedAt": "2026-04-09T08:32:01.535Z"
+}
