@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登入 - Kubernetes 域名管理器</title>
     <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        // If already logged in, redirect to dashboard
+        if (localStorage.getItem('token')) {
+            window.location.href = '/dashboard';
+        }
+    </script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
 </head>
@@ -75,10 +81,6 @@
                 </button>
             </form>
 
-            <div class="mt-6 text-center text-sm text-gray-600">
-                <p>預設帳號: <code class="bg-gray-100 px-2 py-1 rounded">admin</code></p>
-                <p>預設密碼: <code class="bg-gray-100 px-2 py-1 rounded">admin</code></p>
-            </div>
         </div>
 
         <div class="mt-6 text-center text-sm text-gray-600">
