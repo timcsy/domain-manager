@@ -1,0 +1,19 @@
+# API Contract: Settings (Ingress 相關)
+# 既有端點，無新增端點。此文件記錄與 Ingress Controller 相關的 settings key。
+
+# GET /api/v1/settings
+# 回傳所有系統設定，包含：
+#   - default_ingress_class: "nginx" | "traefik" | 自訂字串
+#   - ingress_annotations: JSON 字串，使用者自訂的額外 annotation
+
+# PATCH /api/v1/settings
+# 更新系統設定
+# Request body:
+#   {
+#     "settings": {
+#       "default_ingress_class": "traefik",
+#       "ingress_annotations": "{\"custom.annotation/key\": \"value\"}"
+#     }
+#   }
+
+# 無新增 API 端點。所有變更在 service 層和 K8s 操作層。

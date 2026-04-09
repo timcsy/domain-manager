@@ -40,6 +40,8 @@ spec:
           value: {{ .Values.persistence.mountPath }}/database.db
         - name: PORT
           value: "{{ .Values.service.targetPort }}"
+        - name: DEFAULT_INGRESS_CLASS
+          value: {{ .Values.subdomains.defaultIngressClass | quote }}
         - name: MCP_ENABLED
           value: {{ .Values.mcp.enabled | quote }}
         - name: BACKUP_ENABLED

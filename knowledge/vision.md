@@ -77,6 +77,15 @@ DevOps 工程師在 Kubernetes 叢集中管理 domain 和 SSL 憑證的流程不
 - [ ] 端對端驗證（需在實際 K8s 叢集執行）
 - [x] 程式碼審查與重構
 
+### 未來：多 Ingress Controller 支援（含 K3s Traefik）
+
+- [x] 完成
+
+**成功標準：**
+- [x] Ingress class 從系統設定動態讀取，不再硬編碼 nginx
+- [x] 支援 Traefik（K3s 預設）和 Nginx Ingress Controller
+- [x] 不同 Ingress Controller 的 annotation 差異自動處理
+
 ### 未來：Cloudflare 整合
 
 - [ ] 完成

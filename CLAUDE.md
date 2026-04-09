@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2025-11-07
 
 ## Active Technologies
+- Go 1.22+ + go-chi/chi v5, client-go, modernc.org/sqlite (002-multi-ingress)
+- SQLite (WAL mode) — `system_settings` 表已有 `default_ingress_class` 和 `ingress_annotations` 欄位 (002-multi-ingress)
 
 - (001-k8s-domain-manager)
 
@@ -22,6 +24,7 @@ tests/
 : Follow standard conventions
 
 ## Recent Changes
+- 002-multi-ingress: Added Go 1.22+ + go-chi/chi v5, client-go, modernc.org/sqlite
 
 - 001-k8s-domain-manager: Added
 

@@ -44,6 +44,20 @@ func InitializeServices() {
 	certificateService = services.NewCertificateService(certRepo, domainRepo)
 	settingsService = services.NewSettingsService(settingsRepo)
 
+	domainService.SetSettingsService(settingsService)
+	certificateService.SetSettingsService(settingsService)
+
+	// Apply DEFAULT_INGRESS_CLASS from environment (Helm) if set
+	if envIngressClass := os.Getenv("DEFAULT_INGRESS_CLASS"); envIngressClass != "" {
+		currentSetting, err := settingsService.GetSetting("default_ingress_class")
+		if err != nil || currentSetting == nil || currentSetting.Value == "" || currentSetting.Value == "nginx" {
+			_ = settingsService.UpdateSettings(&models.SettingsUpdateRequest{
+				Settings: map[string]string{"default_ingress_class": envIngressClass},
+			})
+			log.Printf("Set default_ingress_class to %s from environment", envIngressClass)
+		}
+	}
+
 	apiKeyRepo := repositories.NewAPIKeyRepository(db.DB)
 	apiKeyService = services.NewAPIKeyService(apiKeyRepo)
 

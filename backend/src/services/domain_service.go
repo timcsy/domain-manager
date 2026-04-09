@@ -5,6 +5,8 @@ import (
 	"log"
 	"strings"
 
+	"encoding/json"
+
 	"github.com/domain-manager/backend/src/k8s"
 	"github.com/domain-manager/backend/src/models"
 	"github.com/domain-manager/backend/src/repositories"
@@ -13,8 +15,9 @@ import (
 
 // DomainService handles domain business logic
 type DomainService struct {
-	domainRepo        *repositories.DomainRepository
-	certRepo          *repositories.CertificateRepository
+	domainRepo         *repositories.DomainRepository
+	certRepo           *repositories.CertificateRepository
+	settingsService    *SettingsService
 	subdomainValidator *subdomain.SubdomainValidator
 }
 
@@ -30,6 +33,52 @@ func NewDomainService(domainRepo *repositories.DomainRepository) *DomainService 
 // SetCertificateRepository sets the certificate repository
 func (s *DomainService) SetCertificateRepository(certRepo *repositories.CertificateRepository) {
 	s.certRepo = certRepo
+}
+
+// SetSettingsService sets the settings service for dynamic configuration
+func (s *DomainService) SetSettingsService(settingsService *SettingsService) {
+	s.settingsService = settingsService
+}
+
+// getCustomAnnotations reads user-defined ingress annotations from system settings
+func (s *DomainService) getCustomAnnotations() map[string]string {
+	if s.settingsService != nil {
+		setting, err := s.settingsService.GetSetting("ingress_annotations")
+		if err == nil && setting != nil && setting.Value != "" && setting.Value != "{}" {
+			var annotations map[string]string
+			if json.Unmarshal([]byte(setting.Value), &annotations) == nil {
+				return annotations
+			}
+		}
+	}
+	return nil
+}
+
+// getIngressAnnotations returns merged annotations for the current controller, SSL state, and extra annotations
+func (s *DomainService) getIngressAnnotations(sslEnabled bool, extraAnnotations map[string]string) map[string]string {
+	controllerName := s.getIngressClass()
+	customAnnotations := s.getCustomAnnotations()
+
+	// Get profile + custom annotations
+	result := k8s.GetAnnotationsForController(controllerName, sslEnabled, customAnnotations)
+
+	// Merge extra annotations (e.g., cert-manager) on top
+	for k, v := range extraAnnotations {
+		result[k] = v
+	}
+
+	return result
+}
+
+// getIngressClass reads the current default ingress class from system settings
+func (s *DomainService) getIngressClass() string {
+	if s.settingsService != nil {
+		setting, err := s.settingsService.GetSetting("default_ingress_class")
+		if err == nil && setting != nil && setting.Value != "" {
+			return setting.Value
+		}
+	}
+	return "nginx"
 }
 
 // ListDomains retrieves a list of domains
@@ -164,7 +213,7 @@ func (s *DomainService) createIngressForDomain(domain *models.Domain) {
 	ingressMgr := k8s.NewIngressManager()
 
 	// 準備 Ingress 配置
-	ingressClassName := "nginx"
+	ingressClassName := s.getIngressClass()
 	cfg := &k8s.IngressConfig{
 		Name:             fmt.Sprintf("domain-%d", domain.ID),
 		Namespace:        domain.TargetNamespace,
@@ -174,13 +223,17 @@ func (s *DomainService) createIngressForDomain(domain *models.Domain) {
 		IngressClassName: &ingressClassName,
 	}
 
-	// 如果啟用自動 SSL，配置 Let's Encrypt
+	// 配置 annotation 和 SSL
+	var extraAnnotations map[string]string
+	sslEnabled := false
 	if domain.SSLMode == "auto" {
 		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
-		cfg.Annotations = map[string]string{
+		extraAnnotations = map[string]string{
 			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
 		}
+		sslEnabled = true
 	}
+	cfg.Annotations = s.getIngressAnnotations(sslEnabled, extraAnnotations)
 
 	// 建立 Ingress
 	_, err := ingressMgr.CreateIngress(cfg)
@@ -202,7 +255,7 @@ func (s *DomainService) updateIngressForDomain(domain *models.Domain) {
 	ingressMgr := k8s.NewIngressManager()
 
 	// 準備 Ingress 配置
-	ingressClassName := "nginx"
+	ingressClassName := s.getIngressClass()
 	cfg := &k8s.IngressConfig{
 		Name:             fmt.Sprintf("domain-%d", domain.ID),
 		Namespace:        domain.TargetNamespace,
@@ -212,13 +265,17 @@ func (s *DomainService) updateIngressForDomain(domain *models.Domain) {
 		IngressClassName: &ingressClassName,
 	}
 
-	// 如果啟用自動 SSL，配置 Let's Encrypt
+	// 配置 annotation 和 SSL
+	var extraAnnotations map[string]string
+	sslEnabled := false
 	if domain.SSLMode == "auto" {
 		cfg.TLSSecretName = fmt.Sprintf("domain-%d-tls", domain.ID)
-		cfg.Annotations = map[string]string{
+		extraAnnotations = map[string]string{
 			"cert-manager.io/cluster-issuer": "letsencrypt-prod",
 		}
+		sslEnabled = true
 	}
+	cfg.Annotations = s.getIngressAnnotations(sslEnabled, extraAnnotations)
 
 	// 更新 Ingress
 	_, err := ingressMgr.UpdateIngress(cfg)

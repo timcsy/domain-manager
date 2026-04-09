@@ -134,8 +134,17 @@
                         <div class="space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">預設 Ingress Class</label>
-                                <input x-model="settings.default_ingress_class" type="text" class="input"
-                                       placeholder="nginx">
+                                <div class="flex space-x-2">
+                                    <select x-model="settings.default_ingress_class" class="input"
+                                            @change="if ($event.target.value === '__custom__') { settings.default_ingress_class = ''; $refs.customIngress.focus(); }">
+                                        <option value="nginx">nginx</option>
+                                        <option value="traefik">traefik</option>
+                                        <option value="__custom__">自訂...</option>
+                                    </select>
+                                    <input x-ref="customIngress" x-show="settings.default_ingress_class !== 'nginx' && settings.default_ingress_class !== 'traefik'"
+                                           x-model="settings.default_ingress_class" type="text" class="input"
+                                           placeholder="自訂 ingress class">
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Ingress 預設註解（JSON）</label>

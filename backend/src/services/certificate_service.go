@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log"
@@ -17,10 +18,41 @@ import (
 
 // CertificateService handles certificate business logic
 type CertificateService struct {
-	certRepo   *repositories.CertificateRepository
-	domainRepo *repositories.DomainRepository
-	validator  *certificate.CertificateValidator
-	encryptor  *certificate.Encryptor
+	certRepo        *repositories.CertificateRepository
+	domainRepo      *repositories.DomainRepository
+	settingsService *SettingsService
+	validator       *certificate.CertificateValidator
+	encryptor       *certificate.Encryptor
+}
+
+// SetSettingsService sets the settings service for dynamic configuration
+func (s *CertificateService) SetSettingsService(settingsService *SettingsService) {
+	s.settingsService = settingsService
+}
+
+// getCustomAnnotations reads user-defined ingress annotations from system settings
+func (s *CertificateService) getCustomAnnotations() map[string]string {
+	if s.settingsService != nil {
+		setting, err := s.settingsService.GetSetting("ingress_annotations")
+		if err == nil && setting != nil && setting.Value != "" && setting.Value != "{}" {
+			var annotations map[string]string
+			if json.Unmarshal([]byte(setting.Value), &annotations) == nil {
+				return annotations
+			}
+		}
+	}
+	return nil
+}
+
+// getIngressClass reads the current default ingress class from system settings
+func (s *CertificateService) getIngressClass() string {
+	if s.settingsService != nil {
+		setting, err := s.settingsService.GetSetting("default_ingress_class")
+		if err == nil && setting != nil && setting.Value != "" {
+			return setting.Value
+		}
+	}
+	return "nginx"
 }
 
 // NewCertificateService creates a new certificate service
@@ -373,7 +405,10 @@ func (s *CertificateService) deleteSecretForCertificate(cert *models.Certificate
 func (s *CertificateService) updateDomainIngressWithCertificate(domain *models.Domain, cert *models.Certificate) {
 	ingressMgr := k8s.NewIngressManager()
 
-	ingressClassName := "nginx"
+	ingressClassName := s.getIngressClass()
+	customAnnotations := s.getCustomAnnotations()
+	annotations := k8s.GetAnnotationsForController(ingressClassName, true, customAnnotations)
+
 	cfg := &k8s.IngressConfig{
 		Name:             fmt.Sprintf("domain-%d", domain.ID),
 		Namespace:        domain.TargetNamespace,
@@ -382,6 +417,7 @@ func (s *CertificateService) updateDomainIngressWithCertificate(domain *models.D
 		ServicePort:      domain.TargetPort,
 		TLSSecretName:    cert.K8sSecretName,
 		IngressClassName: &ingressClassName,
+		Annotations:      annotations,
 	}
 
 	_, err := ingressMgr.UpdateIngress(cfg)
