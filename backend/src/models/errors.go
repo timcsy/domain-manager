@@ -18,6 +18,11 @@ var (
 	// Diagnostic Log errors
 	ErrDiagnosticLogNotFound = errors.New("diagnostic log not found")
 
+	// API Key errors
+	ErrAPIKeyNotFound = errors.New("API key not found")
+	ErrAPIKeyExpired  = errors.New("API key has expired")
+	ErrAPIKeyDisabled = errors.New("API key is disabled")
+
 	// General errors
 	ErrNotFound      = errors.New("resource not found")
 	ErrInvalidInput  = errors.New("invalid input")

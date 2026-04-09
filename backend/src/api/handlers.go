@@ -11,6 +11,8 @@ import (
 
 	"github.com/domain-manager/backend/src/db"
 	"github.com/domain-manager/backend/src/k8s"
+	"github.com/domain-manager/backend/src/mcp"
+	"github.com/domain-manager/backend/src/middleware"
 	"github.com/domain-manager/backend/src/models"
 	"github.com/domain-manager/backend/src/repositories"
 	"github.com/domain-manager/backend/src/services"
@@ -24,6 +26,9 @@ var (
 	domainService      *services.DomainService
 	certificateService *services.CertificateService
 	settingsService    *services.SettingsService
+	apiKeyService      *services.APIKeyService
+	backupService      *services.BackupService
+	mcpServer          *mcp.Server
 )
 
 // InitializeServices initializes all services
@@ -38,6 +43,26 @@ func InitializeServices() {
 	domainService.SetCertificateRepository(certRepo)
 	certificateService = services.NewCertificateService(certRepo, domainRepo)
 	settingsService = services.NewSettingsService(settingsRepo)
+
+	apiKeyRepo := repositories.NewAPIKeyRepository(db.DB)
+	apiKeyService = services.NewAPIKeyService(apiKeyRepo)
+
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		dbPath = "./data/database.db"
+	}
+	backupService = services.NewBackupService(dbPath)
+
+	mcpServer = mcp.NewServer(domainService, certificateService, domainRepo, certRepo)
+
+	// Register API key validator for Auth middleware
+	middleware.SetAPIKeyValidator(func(rawKey string) (bool, error) {
+		_, err := apiKeyService.ValidateKey(rawKey)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	})
 
 	// Initialize Let's Encrypt client
 	if err := initializeLetsEncrypt(); err != nil {
@@ -856,17 +881,112 @@ func HandleGetLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func HandleListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	Success(w, []interface{}{}, "API keys feature coming soon")
+	keys, err := apiKeyService.ListAllKeys()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list API keys: %v", err))
+		return
+	}
+	Success(w, keys, "API keys retrieved successfully")
 }
 
 func HandleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
-	Error(w, http.StatusNotImplemented, "Create API key not yet implemented")
+	var req models.APIKeyCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Use admin ID 1 for now (single admin system)
+	resp, err := apiKeyService.GenerateKey(&req, 1)
+	if err != nil {
+		if err == models.ErrInvalidInput {
+			Error(w, http.StatusBadRequest, "Invalid input: key_name is required, permissions must be read/write/delete")
+			return
+		}
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create API key: %v", err))
+		return
+	}
+	Success(w, resp, "API key created successfully. Save the raw_key now — it won't be shown again.")
 }
 
 func HandleDeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	Error(w, http.StatusNotImplemented, "Delete API key not yet implemented")
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		Error(w, http.StatusBadRequest, "Invalid API key ID")
+		return
+	}
+
+	if err := apiKeyService.RevokeKey(id); err != nil {
+		if err == models.ErrAPIKeyNotFound {
+			Error(w, http.StatusNotFound, "API key not found")
+			return
+		}
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete API key: %v", err))
+		return
+	}
+	Success(w, nil, "API key deleted successfully")
 }
 
 func HandleMCP(w http.ResponseWriter, r *http.Request) {
-	Error(w, http.StatusNotImplemented, "MCP endpoint not yet implemented")
+	if mcpServer == nil {
+		Error(w, http.StatusInternalServerError, "MCP server not initialized")
+		return
+	}
+
+	var body json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		Error(w, http.StatusBadRequest, "Invalid JSON request")
+		return
+	}
+
+	response := mcpServer.HandleMessage(body)
+	if response == nil {
+		// Notification, no response needed
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(response)
+}
+
+func HandleCreateBackup(w http.ResponseWriter, r *http.Request) {
+	info, err := backupService.CreateBackup()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create backup: %v", err))
+		return
+	}
+	Success(w, info, "Backup created successfully")
+}
+
+func HandleListBackups(w http.ResponseWriter, r *http.Request) {
+	backups, err := backupService.ListBackups()
+	if err != nil {
+		Error(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list backups: %v", err))
+		return
+	}
+	Success(w, backups, "Backups retrieved successfully")
+}
+
+func HandleDownloadBackup(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	path, err := backupService.GetBackupPath(filename)
+	if err != nil {
+		Error(w, http.StatusNotFound, fmt.Sprintf("Backup not found: %v", err))
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, path)
+}
+
+func HandleDeleteBackup(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+	if err := backupService.DeleteBackup(filename); err != nil {
+		Error(w, http.StatusNotFound, fmt.Sprintf("Failed to delete backup: %v", err))
+		return
+	}
+	Success(w, nil, "Backup deleted successfully")
 }

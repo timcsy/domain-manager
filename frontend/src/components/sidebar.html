@@ -34,7 +34,39 @@
             <span>SSL 憑證</span>
         </a>
 
-        <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-md hover:bg-gray-100">
+        <a href="/backup"
+           class="flex items-center space-x-3 px-3 py-2 rounded-md"
+           :class="window.location.pathname === '/backup' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-100'">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+            </svg>
+            <span>備份管理</span>
+        </a>
+
+        <a href="/api-keys"
+           class="flex items-center space-x-3 px-3 py-2 rounded-md"
+           :class="window.location.pathname === '/api-keys' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-100'">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+            </svg>
+            <span>API 金鑰</span>
+        </a>
+
+        <a href="/api-docs"
+           class="flex items-center space-x-3 px-3 py-2 rounded-md"
+           :class="window.location.pathname === '/api-docs' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-100'">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <span>API 文件</span>
+        </a>
+
+        <a href="/settings"
+           class="flex items-center space-x-3 px-3 py-2 rounded-md"
+           :class="window.location.pathname === '/settings' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-100'">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                       d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>

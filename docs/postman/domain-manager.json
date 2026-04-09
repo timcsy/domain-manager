@@ -1,0 +1,259 @@
+{
+  "info": {
+    "name": "Domain Manager API",
+    "description": "Kubernetes 域名管理器 REST API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "sessionToken", "value": "" },
+    { "key": "apiKey", "value": "" }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-Session-Token", "type": "string" },
+      { "key": "value", "value": "{{sessionToken}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"admin\", \"password\": \"admin\"}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Domains",
+      "item": [
+        {
+          "name": "List Domains",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/domains" }
+        },
+        {
+          "name": "Create Domain",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/domains",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"domain_name\": \"app.example.com\", \"target_service\": \"my-app\", \"target_namespace\": \"default\", \"target_port\": 8080, \"ssl_mode\": \"auto\"}"
+            }
+          }
+        },
+        {
+          "name": "Get Domain",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/domains/1" }
+        },
+        {
+          "name": "Update Domain",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/domains/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"target_port\": 3000}"
+            }
+          }
+        },
+        {
+          "name": "Delete Domain",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/domains/1" }
+        },
+        {
+          "name": "Get Domain Tree",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/domains/tree" }
+        },
+        {
+          "name": "Batch Create Domains",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/domains/batch",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"domains\": [{\"domain_name\": \"a.example.com\", \"target_service\": \"svc-a\", \"target_port\": 80}]}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Certificates",
+      "item": [
+        {
+          "name": "List Certificates",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/certificates" }
+        },
+        {
+          "name": "Get Expiring Certificates",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/certificates/expiring?days=30" }
+        },
+        {
+          "name": "Get Certificate",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/certificates/1" }
+        },
+        {
+          "name": "Renew Certificate",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/certificates/1/renew" }
+        },
+        {
+          "name": "Delete Certificate",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/certificates/1" }
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "List Services",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/services" }
+        },
+        {
+          "name": "Get Service",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/services/default/my-app" }
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/diagnostics/health" }
+        },
+        {
+          "name": "Get Logs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/diagnostics/logs?limit=50" }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get Settings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/settings" }
+        },
+        {
+          "name": "Update Settings",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}/api/v1/settings",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"letsencrypt_email\": \"admin@example.com\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Keys",
+      "item": [
+        {
+          "name": "List API Keys",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/api-keys" }
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/api-keys",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"key_name\": \"CI/CD Pipeline\", \"permissions\": [\"read\", \"write\"]}"
+            }
+          }
+        },
+        {
+          "name": "Delete API Key",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/api-keys/1" }
+        }
+      ]
+    },
+    {
+      "name": "Backup",
+      "item": [
+        {
+          "name": "List Backups",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/backup" }
+        },
+        {
+          "name": "Create Backup",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/v1/backup" }
+        },
+        {
+          "name": "Download Backup",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/v1/backup/backup-20250101-120000.db" }
+        },
+        {
+          "name": "Delete Backup",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/v1/backup/backup-20250101-120000.db" }
+        }
+      ]
+    },
+    {
+      "name": "MCP",
+      "item": [
+        {
+          "name": "MCP Initialize",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/mcp",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2024-11-05\", \"capabilities\": {}, \"clientInfo\": {\"name\": \"postman\", \"version\": \"1.0\"}}}"
+            }
+          }
+        },
+        {
+          "name": "MCP List Tools",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/mcp",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"jsonrpc\": \"2.0\", \"id\": 2, \"method\": \"tools/list\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Service Health",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        }
+      ]
+    }
+  ]
+}

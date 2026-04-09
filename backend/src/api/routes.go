@@ -21,6 +21,12 @@ func NewRouter() *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(chimiddleware.Compress(5))
 
+	// Request tracing
+	r.Use(middleware.RequestTracing)
+
+	// Rate limiting (120 requests per minute per IP)
+	r.Use(middleware.RateLimit(120))
+
 	// CORS configuration
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
@@ -95,6 +101,14 @@ func NewRouter() *chi.Mux {
 				r.Post("/", HandleCreateAPIKey)
 				r.Delete("/{id}", HandleDeleteAPIKey)
 			})
+
+			// Backup
+			r.Route("/backup", func(r chi.Router) {
+				r.Get("/", HandleListBackups)
+				r.Post("/", HandleCreateBackup)
+				r.Get("/{filename}", HandleDownloadBackup)
+				r.Delete("/{filename}", HandleDeleteBackup)
+			})
 		})
 	})
 
@@ -123,6 +137,18 @@ func NewRouter() *chi.Mux {
 	})
 	r.Get("/certificates", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, frontendDir+"/src/pages/certificates.html")
+	})
+	r.Get("/api-keys", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, frontendDir+"/src/pages/api-keys.html")
+	})
+	r.Get("/backup", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, frontendDir+"/src/pages/backup.html")
+	})
+	r.Get("/api-docs", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, frontendDir+"/src/pages/api-docs.html")
+	})
+	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, frontendDir+"/src/pages/settings.html")
 	})
 
 	// Serve static assets with correct MIME types

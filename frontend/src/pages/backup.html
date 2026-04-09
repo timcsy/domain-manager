@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>備份管理 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <header class="bg-white shadow-sm border-b border-gray-200 p-6">
+                <h2 class="text-2xl font-bold text-gray-900">備份管理</h2>
+                <p class="text-gray-600 mt-1">建立與管理資料庫備份</p>
+            </header>
+
+            <div class="p-6" x-data="{
+                backups: [],
+                loading: true,
+                creating: false,
+                message: null,
+                messageType: 'success',
+
+                async loadBackups() {
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/backup', {
+                            headers: { 'X-Session-Token': token }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.backups = result.data || [];
+                        }
+                    } catch (err) {
+                        console.error('Failed to load backups:', err);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async createBackup() {
+                    this.creating = true;
+                    this.message = null;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/backup', {
+                            method: 'POST',
+                            headers: { 'X-Session-Token': token }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.message = '備份建立成功：' + result.data.filename;
+                            this.messageType = 'success';
+                            await this.loadBackups();
+                        } else {
+                            this.message = '備份失敗：' + result.message;
+                            this.messageType = 'error';
+                        }
+                    } catch (err) {
+                        this.message = '備份失敗：' + err.message;
+                        this.messageType = 'error';
+                    } finally {
+                        this.creating = false;
+                    }
+                },
+
+                downloadBackup(filename) {
+                    const token = localStorage.getItem('token');
+                    window.open('/api/v1/backup/' + filename + '?token=' + token, '_blank');
+                },
+
+                async deleteBackup(filename) {
+                    if (!confirm('確定要刪除備份「' + filename + '」嗎？')) return;
+                    try {
+                        const token = localStorage.getItem('token');
+                        const response = await fetch('/api/v1/backup/' + filename, {
+                            method: 'DELETE',
+                            headers: { 'X-Session-Token': token }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.message = '備份已刪除';
+                            this.messageType = 'success';
+                            await this.loadBackups();
+                        }
+                    } catch (err) {
+                        console.error('Failed to delete backup:', err);
+                    }
+                },
+
+                formatSize(bytes) {
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+                },
+
+                formatDate(dateStr) {
+                    if (!dateStr) return '-';
+                    return new Date(dateStr).toLocaleString('zh-TW');
+                }
+            }" x-init="loadBackups()">
+
+                <!-- Message Alert -->
+                <div x-show="message" class="mb-6 rounded-lg p-4 border"
+                     :class="messageType === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'">
+                    <div class="flex items-center justify-between">
+                        <p :class="messageType === 'success' ? 'text-green-700' : 'text-red-700'" x-text="message"></p>
+                        <button @click="message = null" :class="messageType === 'success' ? 'text-green-600' : 'text-red-600'">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <span class="text-gray-600" x-show="!loading" x-text="'共 ' + backups.length + ' 個備份'"></span>
+                    </div>
+                    <button @click="createBackup()" class="btn-primary" :disabled="creating">
+                        <span x-show="!creating">建立備份</span>
+                        <span x-show="creating">備份中...</span>
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div x-show="loading" class="text-center py-12">
+                    <p class="text-gray-500">載入中...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div x-show="!loading && backups.length === 0" class="card text-center py-12">
+                    <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                    </svg>
+                    <p class="text-gray-500">尚未建立任何備份</p>
+                    <button @click="createBackup()" class="btn-primary mt-4">建立第一個備份</button>
+                </div>
+
+                <!-- Backups Table -->
+                <div x-show="!loading && backups.length > 0" class="card overflow-hidden p-0">
+                    <table class="w-full">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">檔案名稱</th>
+                                <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">大小</th>
+                                <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">建立時間</th>
+                                <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <template x-for="backup in backups" :key="backup.filename">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4">
+                                        <span class="font-medium text-gray-900 font-mono text-sm" x-text="backup.filename"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-500" x-text="formatSize(backup.size)"></td>
+                                    <td class="px-6 py-4 text-sm text-gray-500" x-text="formatDate(backup.created_at)"></td>
+                                    <td class="px-6 py-4 text-right space-x-3">
+                                        <button @click="downloadBackup(backup.filename)" class="text-primary-600 hover:text-primary-800 text-sm font-medium">
+                                            下載
+                                        </button>
+                                        <button @click="deleteBackup(backup.filename)" class="text-red-600 hover:text-red-800 text-sm font-medium">
+                                            刪除
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

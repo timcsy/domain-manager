@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API 文件 - Kubernetes 域名管理器</title>
+    <link href="/dist/styles/main.css" rel="stylesheet">
+    <script>
+        document.addEventListener('htmx:configRequest', function(evt) {
+            const token = localStorage.getItem('token');
+            if (token) {
+                evt.detail.headers['X-Session-Token'] = token;
+            }
+        });
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+        }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://unpkg.com/alpinejs@3.13.7/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div hx-get="/components/sidebar.html" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <header class="bg-white shadow-sm border-b border-gray-200 p-6">
+                <h2 class="text-2xl font-bold text-gray-900">API 文件</h2>
+                <p class="text-gray-600 mt-1">REST API 和 MCP 端點說明</p>
+            </header>
+
+            <div class="p-6 space-y-6" x-data="{ activeTab: 'rest' }">
+                <!-- Tabs -->
+                <div class="flex space-x-1 bg-gray-100 rounded-lg p-1 w-fit">
+                    <button @click="activeTab = 'rest'"
+                            class="px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                            :class="activeTab === 'rest' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'">
+                        REST API
+                    </button>
+                    <button @click="activeTab = 'mcp'"
+                            class="px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                            :class="activeTab === 'mcp' ? 'bg-white shadow text-gray-900' : 'text-gray-600 hover:text-gray-900'">
+                        MCP
+                    </button>
+                </div>
+
+                <!-- REST API -->
+                <div x-show="activeTab === 'rest'" class="space-y-6">
+                    <!-- Authentication -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-3">認證方式</h3>
+                        <div class="space-y-3">
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <p class="font-medium text-sm text-gray-700">Session Token</p>
+                                <p class="text-sm text-gray-500 mt-1">登入後取得，透過 <code class="bg-gray-200 px-1 rounded">X-Session-Token</code> header 傳遞</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <p class="font-medium text-sm text-gray-700">API Key</p>
+                                <p class="text-sm text-gray-500 mt-1">程式化存取，透過 <code class="bg-gray-200 px-1 rounded">X-API-Key</code> header 傳遞</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Endpoints -->
+                    <div class="card p-0 overflow-hidden" x-data="{ openSection: null }">
+                        <h3 class="text-lg font-semibold p-6 pb-3">端點列表</h3>
+
+                        <!-- Domain endpoints -->
+                        <div class="border-t border-gray-200">
+                            <button @click="openSection = openSection === 'domains' ? null : 'domains'"
+                                    class="w-full flex justify-between items-center px-6 py-3 hover:bg-gray-50">
+                                <span class="font-medium">域名管理</span>
+                                <span class="text-gray-400" x-text="openSection === 'domains' ? '−' : '+'"></span>
+                            </button>
+                            <div x-show="openSection === 'domains'" class="px-6 pb-4 space-y-2">
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/domains</code>
+                                    <span class="text-gray-500">列出所有域名</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-info px-2">POST</span>
+                                    <code class="text-gray-700">/api/v1/domains</code>
+                                    <span class="text-gray-500">建立域名</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/domains/{id}</code>
+                                    <span class="text-gray-500">取得域名詳情</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-warning px-2">PUT</span>
+                                    <code class="text-gray-700">/api/v1/domains/{id}</code>
+                                    <span class="text-gray-500">更新域名</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-error px-2">DEL</span>
+                                    <code class="text-gray-700">/api/v1/domains/{id}</code>
+                                    <span class="text-gray-500">刪除域名</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Certificate endpoints -->
+                        <div class="border-t border-gray-200">
+                            <button @click="openSection = openSection === 'certs' ? null : 'certs'"
+                                    class="w-full flex justify-between items-center px-6 py-3 hover:bg-gray-50">
+                                <span class="font-medium">憑證管理</span>
+                                <span class="text-gray-400" x-text="openSection === 'certs' ? '−' : '+'"></span>
+                            </button>
+                            <div x-show="openSection === 'certs'" class="px-6 pb-4 space-y-2">
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/certificates</code>
+                                    <span class="text-gray-500">列出所有憑證</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/certificates/expiring</code>
+                                    <span class="text-gray-500">即將到期的憑證</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-info px-2">POST</span>
+                                    <code class="text-gray-700">/api/v1/certificates/{id}/renew</code>
+                                    <span class="text-gray-500">續期憑證</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Other endpoints -->
+                        <div class="border-t border-gray-200">
+                            <button @click="openSection = openSection === 'other' ? null : 'other'"
+                                    class="w-full flex justify-between items-center px-6 py-3 hover:bg-gray-50">
+                                <span class="font-medium">其他端點</span>
+                                <span class="text-gray-400" x-text="openSection === 'other' ? '−' : '+'"></span>
+                            </button>
+                            <div x-show="openSection === 'other'" class="px-6 pb-4 space-y-2">
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/services</code>
+                                    <span class="text-gray-500">K8s 服務列表</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/settings</code>
+                                    <span class="text-gray-500">系統設定</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/api-keys</code>
+                                    <span class="text-gray-500">API 金鑰列表</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/api/v1/backup</code>
+                                    <span class="text-gray-500">備份列表</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-info px-2">POST</span>
+                                    <code class="text-gray-700">/api/v1/backup</code>
+                                    <span class="text-gray-500">建立備份</span>
+                                </div>
+                                <div class="flex items-center space-x-3 text-sm">
+                                    <span class="badge-success px-2">GET</span>
+                                    <code class="text-gray-700">/health</code>
+                                    <span class="text-gray-500">健康檢查（公開）</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Example -->
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-3">使用範例</h3>
+                        <div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-gray-100 overflow-x-auto">
+                            <p class="text-gray-400"># 使用 API Key 列出域名</p>
+                            <p>curl -H "X-API-Key: dm_your_key" http://localhost:8080/api/v1/domains</p>
+                            <p class="mt-3 text-gray-400"># 建立域名</p>
+                            <p>curl -X POST http://localhost:8080/api/v1/domains \</p>
+                            <p>  -H "X-API-Key: dm_your_key" \</p>
+                            <p>  -H "Content-Type: application/json" \</p>
+                            <p>  -d '{"domain_name":"app.example.com","target_service":"my-app","target_port":8080}'</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP -->
+                <div x-show="activeTab === 'mcp'" class="space-y-6">
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-3">MCP 協議</h3>
+                        <p class="text-gray-600 mb-4">MCP（Model Context Protocol）讓 AI 工具（如 Claude Desktop）能透過 JSON-RPC 2.0 操作域名管理器。</p>
+                        <p class="text-sm text-gray-500">端點：<code class="bg-gray-200 px-1 rounded">POST /mcp</code></p>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-3">可用工具</h3>
+                        <div class="space-y-2">
+                            <div class="bg-gray-50 rounded p-3">
+                                <span class="font-mono text-sm font-medium">list_domains</span>
+                                <span class="text-gray-500 text-sm ml-2">列出所有域名</span>
+                            </div>
+                            <div class="bg-gray-50 rounded p-3">
+                                <span class="font-mono text-sm font-medium">create_domain</span>
+                                <span class="text-gray-500 text-sm ml-2">建立域名對應</span>
+                            </div>
+                            <div class="bg-gray-50 rounded p-3">
+                                <span class="font-mono text-sm font-medium">list_services</span>
+                                <span class="text-gray-500 text-sm ml-2">列出 K8s 服務</span>
+                            </div>
+                            <div class="bg-gray-50 rounded p-3">
+                                <span class="font-mono text-sm font-medium">list_expiring_certificates</span>
+                                <span class="text-gray-500 text-sm ml-2">即將到期的憑證</span>
+                            </div>
+                            <div class="bg-gray-50 rounded p-3">
+                                <span class="font-mono text-sm font-medium">get_system_health</span>
+                                <span class="text-gray-500 text-sm ml-2">系統健康狀態</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="text-lg font-semibold mb-3">使用範例</h3>
+                        <div class="bg-gray-900 rounded-lg p-4 text-sm font-mono text-gray-100 overflow-x-auto">
+                            <p class="text-gray-400"># 初始化 MCP 連線</p>
+                            <p>curl -X POST http://localhost:8080/mcp \</p>
+                            <p>  -H "Content-Type: application/json" \</p>
+                            <p>  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",</p>
+                            <p>       "params":{"protocolVersion":"2024-11-05","capabilities":{}}}'</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

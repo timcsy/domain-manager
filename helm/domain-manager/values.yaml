@@ -82,10 +82,21 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# API Key configuration
+apiKeys:
+  # Pre-configured API keys (optional)
+  # Keys will be created on startup
+  # Example:
+  # keys:
+  #   - name: "CI/CD Pipeline"
+  #     permissions: ["read", "write"]
+  enabled: true
+
 # MCP Server configuration
 mcp:
   enabled: true
-  port: 8080
+  # MCP endpoint is served on the same port as the main API
+  # No separate port needed
 
 # Backup configuration
 backup:

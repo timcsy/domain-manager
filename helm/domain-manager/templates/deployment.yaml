@@ -40,6 +40,12 @@ spec:
           value: {{ .Values.persistence.mountPath }}/database.db
         - name: PORT
           value: "{{ .Values.service.targetPort }}"
+        - name: MCP_ENABLED
+          value: {{ .Values.mcp.enabled | quote }}
+        - name: BACKUP_ENABLED
+          value: {{ .Values.backup.enabled | quote }}
+        - name: BACKUP_RETENTION_DAYS
+          value: {{ .Values.backup.retentionDays | quote }}
         {{- if .Values.persistence.enabled }}
         volumeMounts:
         - name: data

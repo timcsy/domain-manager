@@ -11,7 +11,11 @@
 - ✅ 單一 Helm Chart 部署
 - ✅ 輕量級設計 (≤512MB 記憶體)
 - ✅ RESTful API 支援
-- 🚧 MCP (Model Context Protocol) 支援 (開發中)
+- ✅ API Key 認證機制
+- ✅ MCP (Model Context Protocol) 支援
+- ✅ 資料庫備份與還原
+- ✅ 速率限制與請求追蹤
+- ✅ 系統設定管理介面
 
 ## 快速開始
 
@@ -76,11 +80,12 @@ domain-manager/
 │   │   ├── repositories/# 資料存取層
 │   │   ├── services/    # 業務邏輯
 │   │   ├── api/         # REST API
+│   │   ├── mcp/         # MCP 伺服器
 │   │   ├── middleware/  # HTTP 中介軟體
 │   │   ├── k8s/         # Kubernetes 客戶端
 │   │   └── db/          # 資料庫管理
 │   ├── database/        # SQL 遷移腳本
-│   └── Dockerfile       # 容器映像建置
+│   └── tests/           # 測試腳本
 ├── frontend/         # Web 介面
 │   └── src/
 │       ├── pages/       # HTML 頁面
@@ -88,9 +93,10 @@ domain-manager/
 │       └── styles/      # TailwindCSS 樣式
 ├── helm/             # Helm Chart
 │   └── domain-manager/
-│       ├── templates/   # K8s 資源模板
-│       ├── Chart.yaml
-│       └── values.yaml
+├── docs/             # 文件
+│   ├── api-usage.md     # API 使用文件
+│   ├── mcp-examples.md  # MCP 範例
+│   └── postman/         # Postman collection
 └── specs/            # 功能規格文件
 ```
 
@@ -143,7 +149,7 @@ docker build -t domain-manager:latest .
 
 ## API 文件
 
-完整 API 文件請參閱 `specs/001-k8s-domain-manager/contracts/api-rest.yaml`
+完整 API 文件請參閱 [docs/api-usage.md](docs/api-usage.md)。MCP 使用範例請參閱 [docs/mcp-examples.md](docs/mcp-examples.md)。
 
 ### 主要 API 端點
 
@@ -152,10 +158,13 @@ POST   /api/v1/auth/login          # 登入
 POST   /api/v1/auth/logout         # 登出
 GET    /api/v1/domains             # 列出域名
 POST   /api/v1/domains             # 新增域名
-GET    /api/v1/domains/{id}        # 取得域名詳情
 PUT    /api/v1/domains/{id}        # 更新域名
 DELETE /api/v1/domains/{id}        # 刪除域名
-GET    /api/v1/diagnostics/health  # 健康檢查
+GET    /api/v1/certificates        # 列出憑證
+GET    /api/v1/services            # 列出 K8s 服務
+GET    /api/v1/api-keys            # 列出 API 金鑰
+POST   /api/v1/backup              # 建立備份
+POST   /mcp                        # MCP JSON-RPC 2.0 端點
 ```
 
 ## 配置

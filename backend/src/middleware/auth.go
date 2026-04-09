@@ -215,9 +215,33 @@ func GetAPIKey(r *http.Request) string {
 	return ""
 }
 
+// APIKeyValidator is a function type for validating API keys from the database
+type APIKeyValidator func(rawKey string) (bool, error)
+
+// apiKeyValidator holds the registered database API key validator
+var apiKeyValidator APIKeyValidator
+
+// SetAPIKeyValidator registers a function to validate API keys against the database
+func SetAPIKeyValidator(v APIKeyValidator) {
+	apiKeyValidator = v
+}
+
 // Auth is the default authentication middleware using session-based auth
+// It also supports API key authentication via X-API-Key header
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try API key authentication first (X-API-Key header)
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey != "" && apiKeyValidator != nil {
+			valid, err := apiKeyValidator(apiKey)
+			if err == nil && valid {
+				ctx := context.WithValue(r.Context(), ContextKeyAPIKey, apiKey)
+				ctx = context.WithValue(ctx, ContextKeyUserID, "api")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		}
+
 		var sessionID string
 
 		// Try to get session ID from cookie first
