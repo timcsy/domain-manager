@@ -89,7 +89,7 @@ func (s *Server) handleListDomains(params json.RawMessage) (*ToolResult, error) 
 		Service string `json:"service"`
 	}
 	if len(params) > 0 {
-		json.Unmarshal(params, &args)
+		_ = json.Unmarshal(params, &args)
 	}
 
 	filter := models.DomainFilter{

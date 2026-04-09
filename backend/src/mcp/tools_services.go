@@ -28,7 +28,7 @@ func (s *Server) handleListServices(params json.RawMessage) (*ToolResult, error)
 		Namespace string `json:"namespace"`
 	}
 	if len(params) > 0 {
-		json.Unmarshal(params, &args)
+		_ = json.Unmarshal(params, &args)
 	}
 
 	mgr := k8s.NewServiceManager()

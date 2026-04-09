@@ -71,7 +71,7 @@ func (s *Server) handleGetDiagnostics(params json.RawMessage) (*ToolResult, erro
 		Limit     float64 `json:"limit"`
 	}
 	if len(params) > 0 {
-		json.Unmarshal(params, &args)
+		_ = json.Unmarshal(params, &args)
 	}
 	if args.Limit == 0 {
 		args.Limit = 50
