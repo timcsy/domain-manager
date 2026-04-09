@@ -145,9 +145,23 @@ func (s *DomainService) CreateDomain(req *models.DomainCreateRequest) (*models.D
 		return nil, err
 	}
 
-	// Check if domain already exists (excluding deleted domains)
+	// Check if domain already exists
 	existing, err := s.domainRepo.GetByName(req.DomainName)
-	if err == nil && existing != nil && existing.Status != "deleted" {
+	if err == nil && existing != nil {
+		if existing.Status == "deleted" {
+			// Reactivate soft-deleted domain with new settings
+			existing.TargetService = req.TargetService
+			existing.TargetNamespace = req.TargetNamespace
+			existing.TargetPort = req.TargetPort
+			existing.SSLMode = req.SSLMode
+			existing.Status = "pending"
+			existing.Enabled = true
+			if err := s.domainRepo.Update(existing); err != nil {
+				return nil, fmt.Errorf("failed to reactivate domain: %w", err)
+			}
+			go s.createIngressForDomain(existing)
+			return existing, nil
+		}
 		return nil, models.ErrDomainExists
 	}
 
