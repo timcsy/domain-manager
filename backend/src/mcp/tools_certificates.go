@@ -66,7 +66,7 @@ func (s *Server) handleListExpiringCertificates(params json.RawMessage) (*ToolRe
 		Days float64 `json:"days"`
 	}
 	if len(params) > 0 {
-		json.Unmarshal(params, &args)
+		_ = json.Unmarshal(params, &args)
 	}
 	if args.Days == 0 {
 		args.Days = 30
