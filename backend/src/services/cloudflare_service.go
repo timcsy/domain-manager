@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/domain-manager/backend/src/k8s"
@@ -39,11 +40,14 @@ type CloudflareStatus struct {
 
 // ValidateToken validates a Cloudflare API token against the Cloudflare API
 func (s *CloudflareService) ValidateToken(token string) (bool, error) {
+	token = strings.TrimSpace(token)
 	if token == "" {
 		return false, fmt.Errorf("token is empty")
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
+
+	// Try API Token first (Bearer auth)
 	req, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/user/tokens/verify", nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
@@ -66,14 +70,44 @@ func (s *CloudflareService) ValidateToken(token string) (bool, error) {
 	if resp.StatusCode == 200 {
 		var result struct {
 			Success bool `json:"success"`
-			Result  struct {
-				Status string `json:"status"`
-			} `json:"result"`
 		}
-		if err := json.Unmarshal(body, &result); err != nil {
-			return false, fmt.Errorf("failed to parse response: %w", err)
+		if err := json.Unmarshal(body, &result); err == nil && result.Success {
+			return true, nil
 		}
-		return result.Success && result.Result.Status == "active", nil
+	}
+
+	// If Bearer auth failed with 401, try as Global API Key via /user endpoint
+	if resp.StatusCode == 401 {
+		log.Printf("Bearer token auth failed, trying as Global API Key...")
+		req2, err := http.NewRequest("GET", "https://api.cloudflare.com/client/v4/user", nil)
+		if err != nil {
+			return false, fmt.Errorf("failed to create request: %w", err)
+		}
+		req2.Header.Set("Authorization", "Bearer "+token)
+
+		resp2, err := client.Do(req2)
+		if err != nil {
+			return false, fmt.Errorf("failed to verify token: %w", err)
+		}
+		defer resp2.Body.Close()
+
+		body2, err := io.ReadAll(resp2.Body)
+		if err != nil {
+			return false, fmt.Errorf("failed to read response: %w", err)
+		}
+
+		log.Printf("Cloudflare /user response: status=%d body=%s", resp2.StatusCode, string(body2))
+
+		if resp2.StatusCode == 200 {
+			var result struct {
+				Success bool `json:"success"`
+			}
+			if err := json.Unmarshal(body2, &result); err == nil && result.Success {
+				return true, nil
+			}
+		}
+
+		return false, fmt.Errorf("Cloudflare API returned status %d — please ensure you are using a valid API Token (not Global API Key)", resp2.StatusCode)
 	}
 
 	return false, fmt.Errorf("Cloudflare API returned status %d", resp.StatusCode)
